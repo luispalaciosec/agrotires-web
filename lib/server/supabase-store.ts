@@ -354,7 +354,8 @@ export class SupabaseStore implements Store {
     const languages = await this.db.from('products').select('name_es', { head: true });
     const photos = await this.db.storage.getBucket(PHOTO_BUCKET);
     const refunds = await this.db.from('orders').select('refunded_cents', { head: true });
-    const tools = await this.db.from('shipments').select('id', { head: true });
+    // A real read: a head request on a missing table comes back without an error.
+    const tools = await this.db.from('shipments').select('id').limit(1);
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
     return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error };
   }
