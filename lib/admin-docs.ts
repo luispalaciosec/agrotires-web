@@ -20,11 +20,15 @@ export const ADMIN_DOCS: AdminDoc[] = [
     es: { title: 'Primeros pasos', summary: 'Cómo está organizado el panel y qué hace cada botón de la barra superior.', sections: [
       ['Barra superior', ['Buscador: encuentra pedidos, productos, cotizaciones y envíos.', 'ES/EN: cambia el idioma del panel. El español es el predeterminado.', 'Sol o luna: cambia entre tema claro y oscuro.', 'Campana: muestra lo que requiere atención.', 'Sobre: lleva a las cotizaciones.']],
       ['Menú lateral', ['Ventas: panel, pedidos, envíos, cotizaciones, clientes, devoluciones y reseñas.', 'Catálogo: productos e inventario.', 'Contenido: páginas hechas con bloques.', 'Análisis: analítica, contabilidad y actividad.', 'Ajustes: tarifas de envío, impuestos, correos, equipo y esta biblioteca.']],
+      ['Tablas', ['Muestran 25 filas por página, con filtros y buscador. El filtro queda en la dirección, así que se puede recargar o compartir.']],
+      ['Olvidé mi contraseña', ['En el inicio de sesión, ¿Olvidaste tu contraseña? envía un enlace al correo.', 'Funciona con cuentas de Supabase, no con la contraseña local de pruebas.']],
       ['Tema e idioma', ['Cada navegador recuerda su propia elección.', 'La traducción al español se aplica en el navegador sobre los textos del panel. Los datos escritos por clientes y por el equipo no se traducen.']],
     ] },
     en: { title: 'Getting started', summary: 'How the panel is organized and what each top bar button does.', sections: [
       ['Top bar', ['Search: finds orders, products, quotes and shipments.', 'ES/EN: changes the panel language. Spanish is the default.', 'Sun or moon: switches between light and dark theme.', 'Bell: shows what needs attention.', 'Envelope: goes to quote requests.']],
       ['Side menu', ['Sell: dashboard, orders, shipments, quotes, customers, returns and reviews.', 'Catalog: products and inventory.', 'Content: pages built from blocks.', 'Insight: analytics, accounting and activity.', 'Setup: shipping rates, taxes, emails, team and this library.']],
+      ['Tables', ['They show 25 rows per page, with filters and search. The filter stays in the address, so it can be reloaded or shared.']],
+      ['Forgot my password', ['At sign in, Forgot your password? emails a link.', 'It works with Supabase accounts, not the local test password.']],
       ['Theme and language', ['Each browser remembers its own choice.', 'Spanish is applied in the browser over the panel text. Data written by customers and the team is not translated.']],
     ] },
   },
@@ -100,12 +104,28 @@ export const ADMIN_DOCS: AdminDoc[] = [
     es: { title: 'Productos', summary: 'Crear, importar y mantener el catálogo.', sections: [
       ['Ficha', ['Nombre y descripción en inglés y español, SKU, marca, categoría, precio y stock.', 'Hasta 8 fotos en JPG, PNG o WebP. Usa solo fotos que puedas publicar.', 'Stock vacío significa sin control de inventario.']],
       ['Compatibilidad', ['Máquinas compatibles, una por renglón: Marca | Modelo | Años.', 'Los clientes solo las ven y buscan por máquina si la casilla de verificación con datos del proveedor está marcada.']],
+      ['Editar y eliminar', ['Cada fila de la tabla tiene Editar y Eliminar. Eliminar pide confirmación y no se puede deshacer.', 'Los filtros encuentran productos sin precio, sin español, sin descripción o sin peso.']],
       ['Importar', ['El CSV crea productos nuevos y actualiza los SKU existentes.', 'Si una línea tiene un problema no se importa nada y se listan todos los problemas.']],
     ] },
     en: { title: 'Products', summary: 'Create, import and maintain the catalog.', sections: [
       ['Product form', ['Name and description in English and Spanish, SKU, brand, category, price and stock.', 'Up to 8 photos in JPG, PNG or WebP. Use only photos you may publish.', 'Empty stock means inventory is not tracked.']],
       ['Fitment', ['Machines it fits, one per line: Make | Model | Years.', 'Customers see them and can search by machine only if the supplier-verified box is checked.']],
+      ['Edit and delete', ['Each table row has Edit and Delete. Delete asks for confirmation and cannot be undone.', 'Filters find products with no price, Spanish, description or weight.']],
       ['Import', ['The CSV creates new products and updates existing SKUs.', 'If any line has a problem, nothing is imported and every problem is listed.']],
+    ] },
+  },
+  {
+    slug: 'asistente',
+    group: 'catalog',
+    es: { title: 'Asistente de productos', summary: 'Llenar la ficha de un producto conversando, sin conocer el formulario.', sections: [
+      ['Cómo usarlo', ['Abre un producto o Agregar producto. El asistente está a la derecha, o arriba en pantallas pequeñas.', 'Cuéntale el producto con tus palabras o envíale una foto de la etiqueta. Te hace una pregunta a la vez.', 'Lo que llena queda resaltado en el formulario. Puedes corregirlo o usar Deshacer lo último.', 'Revisa y presiona Guardar producto. Nada se guarda antes.']],
+      ['Reglas', ['No inventa precios, stock, números de pieza, medidas ni compatibilidad: salen de lo que dices o de lo legible en tu foto.', 'Puede redactar la descripción con tus datos y traducir entre inglés y español. Léelas antes de publicar: la IA puede equivocarse.', 'Publicar en la tienda y confirmar la compatibilidad son casillas que solo marca una persona.']],
+      ['Configuración y privacidad', ['Requiere la variable ANTHROPIC_API_KEY en Vercel. Sin ella, el asistente avisa que no está conectado.', 'Lo que escribes y tus fotos se envían a Anthropic, el proveedor de la IA. No incluyas datos personales ni contraseñas.', 'Cada mensaje tiene un costo de uso de la API de Anthropic, y hay un límite de 60 mensajes por hora.']],
+    ] },
+    en: { title: 'Product assistant', summary: 'Fill in a product record by talking, without knowing the form.', sections: [
+      ['How to use it', ['Open a product or Add product. The assistant is on the right, or on top on small screens.', 'Tell it about the product in your own words or send a photo of the label. It asks one question at a time.', 'What it fills in is highlighted in the form. You can correct it or use Undo the last change.', 'Review and press Save product. Nothing is saved before that.']],
+      ['Rules', ['It does not make up prices, stock, part numbers, measurements or fitment: they come from what you say or what is readable in your photo.', 'It can write the description from your facts and translate between English and Spanish. Read them before publishing: AI can be wrong.', 'Publishing in the store and confirming fitment are boxes only a person ticks.']],
+      ['Setup and privacy', ['It needs the ANTHROPIC_API_KEY variable in Vercel. Without it, the assistant says it is not connected.', 'What you write and your photos are sent to Anthropic, the AI provider. Do not include personal data or passwords.', 'Each message has an Anthropic API usage cost, and there is a limit of 60 messages per hour.']],
     ] },
   },
   {
@@ -205,12 +225,14 @@ export const ADMIN_DOCS: AdminDoc[] = [
       ['Supabase', ['NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY.']],
       ['PayPal', ['PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID, PAYPAL_ENV, PAYMENTS_ENABLED.']],
       ['Correo', ['SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_TEAM.']],
+      ['Asistente', ['ANTHROPIC_API_KEY.']],
       ['Sitio y seguridad', ['NEXT_PUBLIC_SITE_URL, NEXT_PUBLIC_SITE_INDEXABLE, LINK_SECRET, CRON_SECRET, REMINDERS_ENABLED, BUSINESS_POSTAL_ADDRESS.']],
     ] },
     en: { title: 'Environment variables', summary: 'What is set in Vercel. Values are never shared by chat or email.', sections: [
       ['Supabase', ['NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY.']],
       ['PayPal', ['PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_WEBHOOK_ID, PAYPAL_ENV, PAYMENTS_ENABLED.']],
       ['Email', ['SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_TEAM.']],
+      ['Assistant', ['ANTHROPIC_API_KEY.']],
       ['Site and security', ['NEXT_PUBLIC_SITE_URL, NEXT_PUBLIC_SITE_INDEXABLE, LINK_SECRET, CRON_SECRET, REMINDERS_ENABLED, BUSINESS_POSTAL_ADDRESS.']],
     ] },
   },

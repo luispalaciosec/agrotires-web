@@ -2,12 +2,15 @@ import { Icon } from '@/components/ui';
 import { requireAdmin } from '@/lib/server/admin-auth';
 import { getStore } from '@/lib/server/store';
 import { moderateReviewAction } from '../actions';
+import { paginate, Pager, TableFilters } from '../table-tools';
 
-export default async function ReviewsPage() {
+export default async function ReviewsPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
   await requireAdmin();
   const store = getStore();
   const reviews = await store?.listReviews().catch(() => undefined);
   const products = await store?.listProducts().catch(() => []);
+  const { status = 'all', page } = await searchParams;
+  const result = paginate(reviews?.filter((r) => status === 'all' || r.status === status) ?? [], page);
   const nameOf = (id: string) => products?.find((p) => p.id === id)?.name ?? id;
   return (
     <>
@@ -19,11 +22,12 @@ export default async function ReviewsPage() {
       </div>
       {reviews === undefined ? <div className="notice"><Icon name="info" size="sm" /> Run the migration 0010_sales_tools.sql in Supabase to use this section.</div> : null}
       <div className="admin-card">
+        <TableFilters base="/admin/reviews" fields={[{ name: 'status', label: 'Status', value: status, options: [['all', 'All'], ['pending', 'pending'], ['approved', 'approved'], ['rejected', 'rejected']] }]} />
         <div className="admin-scroll">
           <table className="admin-table">
             <thead><tr><th>Product</th><th>Rating</th><th>Review</th><th>By</th><th>Status</th><th /></tr></thead>
             <tbody>
-              {reviews?.map((r) => (
+              {result.rows.map((r) => (
                 <tr key={r.id}>
                   <td>{nameOf(r.productId)}</td>
                   <td>{r.rating} / 5</td>
@@ -38,10 +42,11 @@ export default async function ReviewsPage() {
                   </td>
                 </tr>
               ))}
-              {reviews?.length ? null : <tr><td colSpan={6} className="muted">No reviews yet.</td></tr>}
+              {result.total ? null : <tr><td colSpan={6} className="muted">No reviews yet.</td></tr>}
             </tbody>
           </table>
         </div>
+        <Pager base="/admin/reviews" params={{ status }} result={result} />
       </div>
     </>
   );

@@ -4,14 +4,17 @@ import { SHIPMENT_STATUSES, STATUS_LABELS, type ShipmentStatus } from '@/lib/shi
 import { requireAdmin } from '@/lib/server/admin-auth';
 import { orderRef } from '@/lib/server/email';
 import { getStore } from '@/lib/server/store';
+import { paginate, Pager, TableFilters } from '../table-tools';
 
 const TONE: Partial<Record<ShipmentStatus, string>> = { exception: 'bad', delivered: 'off', label_created: 'warn' };
 
-export default async function ShipmentsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+export default async function ShipmentsPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string; page?: string }> }) {
   await requireAdmin();
-  const { status = 'all' } = await searchParams;
+  const { status = 'all', q = '', page } = await searchParams;
+  const term = q.trim().toLowerCase();
   const all = await getStore()?.listShipments().catch(() => undefined);
-  const shipments = all?.filter((s) => status === 'all' || s.status === status) ?? [];
+  const shipments = all?.filter((s) => status === 'all' || s.status === status).filter((s) => !term || [orderRef(s.orderId), s.carrier, s.trackingNumber].join(' ').toLowerCase().includes(term)) ?? [];
+  const result = paginate(shipments, page);
   return (
     <>
       <div className="admin-head">
@@ -27,12 +30,13 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
           {SHIPMENT_STATUSES.map((s) => <Link key={s} href={`/admin/shipments?status=${s}`} className={status === s ? 'current' : undefined}>{STATUS_LABELS[s]} <small>{all?.filter((x) => x.status === s).length ?? 0}</small></Link>)}
         </div>
       </div>
+      <TableFilters base="/admin/shipments" keep={{ status }} fields={[{ name: 'q', label: 'Search', value: q, placeholder: 'Search order, carrier or tracking number' }]} />
       <div className="admin-card">
         <div className="admin-scroll">
           <table className="admin-table">
             <thead><tr><th>Order</th><th>Carrier</th><th>Tracking number</th><th>Last location</th><th>Updated</th><th>Status</th></tr></thead>
             <tbody>
-              {shipments.map((s) => {
+              {result.rows.map((s) => {
                 const last = s.events.at(-1);
                 return (
                   <tr key={s.id}>
@@ -49,6 +53,7 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
             </tbody>
           </table>
         </div>
+        <Pager base="/admin/shipments" params={{ status, q }} result={result} />
       </div>
     </>
   );

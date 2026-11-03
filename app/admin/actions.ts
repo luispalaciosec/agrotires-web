@@ -5,7 +5,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { isUploadedImage, productImages } from '@/lib/catalog';
 import { blocksSchema, validSlug } from '@/lib/page-blocks';
-import { adminConfigured, currentAdmin, isFullAdmin, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
+import { adminConfigured, currentAdmin, isFullAdmin, logIn, logOut, requireAdmin, supabaseAuthClient, usesSupabaseAuth } from '@/lib/server/admin-auth';
 import { brandedHtml, emailEnabled, send, sendPurchaseOrder } from '@/lib/server/email';
 import { shipOrder, updateShipment } from '@/lib/server/shipments';
 import { fillTemplate, templateDef, templateProblem, type EmailLocale } from '@/lib/email-templates';
@@ -75,6 +75,22 @@ export async function loginAction(_: FormState, form: FormData): Promise<FormSta
   if (await rateLimited(`login:${ip}`, 5, 15 * 60_000)) return { error: 'Too many attempts. Try again in 15 minutes.' };
   if (!(await logIn(String(form.get('email') || ''), String(form.get('password') || '')))) return { error: 'Incorrect email or password.' };
   redirect('/admin');
+}
+
+export async function adminForgotPasswordAction(_: FormState, form: FormData): Promise<FormState> {
+  const h = await headers();
+  const ip = h.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+  if (await rateLimited(`admin-reset:${ip}`, 5, 60 * 60_000)) return { error: 'Too many attempts. Try again in 15 minutes.' };
+  const email = String(form.get('email') || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Enter a valid email address.' };
+  if (usesSupabaseAuth()) {
+    const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || `${h.get('x-forwarded-proto') ?? 'https'}://${h.get('host')}`;
+    const client = await supabaseAuthClient();
+    const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo: `${site}/auth/callback?next=/es/account/password` });
+    if (error) console.error('Admin password reset failed', error.message);
+  }
+  // The same answer either way, so this form cannot reveal who has an account.
+  return { notice: 'If that email has an account, the link is on its way. Check your inbox.' };
 }
 
 export async function logoutAction() {

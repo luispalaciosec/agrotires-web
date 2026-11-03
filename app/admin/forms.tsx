@@ -2,9 +2,10 @@
 
 import { startTransition, useActionState, useState, type FormEvent } from 'react';
 import { panelText } from '@/lib/admin-i18n';
+import { ProductAssistant } from './product-assistant';
 import { PRODUCT_IMAGES, categories, imageSrc, isUploadedImage, productImages } from '@/lib/catalog';
 import type { StoredProduct } from '@/lib/server/store';
-import { deleteProductAction, importProductsAction, loginAction, refundOrderAction, saveProductAction, type FormState } from './actions';
+import { adminForgotPasswordAction, deleteProductAction, importProductsAction, loginAction, refundOrderAction, saveProductAction, type FormState } from './actions';
 
 const empty: FormState = {};
 
@@ -20,6 +21,22 @@ export function Messages({ state }: { state: FormState }) {
 
 export function LoginForm({ withEmail }: { withEmail: boolean }) {
   const [state, action, pending] = useActionState(loginAction, empty);
+  const [resetState, resetAction, resetPending] = useActionState(adminForgotPasswordAction, empty);
+  const [forgot, setForgot] = useState(false);
+  if (forgot) {
+    return (
+      <form action={resetAction}>
+        <Messages state={resetState} />
+        <p style={{ fontSize: 13 }}>Enter your email and we will send you a link to choose a new password.</p>
+        <div className="field">
+          <label className="field-label" htmlFor="reset-email">Email</label>
+          <input className="text-input" id="reset-email" name="email" type="email" autoComplete="username" required autoFocus />
+        </div>
+        <button className="btn btn-block" disabled={resetPending}>Send link</button>
+        <button className="text-link" type="button" style={{ marginTop: 12 }} onClick={() => setForgot(false)}>Back to sign in</button>
+      </form>
+    );
+  }
   return (
     <form action={action}>
       <Messages state={state} />
@@ -34,6 +51,7 @@ export function LoginForm({ withEmail }: { withEmail: boolean }) {
         <input className="text-input" id="password" name="password" type="password" autoComplete="current-password" required autoFocus={!withEmail} />
       </div>
       <button className="btn btn-block" disabled={pending}>Sign in</button>
+      {withEmail ? <button className="text-link" type="button" style={{ marginTop: 12 }} onClick={() => setForgot(true)}>Forgot your password?</button> : null}
     </form>
   );
 }
@@ -53,7 +71,7 @@ const MAX_UPLOAD_BYTES = 3_800_000;
 
 // Shrinks in the browser so large phone photos fit the upload limit. Redrawing also drops
 // hidden data such as GPS location, and fills transparency with white for JPEG.
-async function shrinkPhoto(file: File, maxSide = 1600) {
+export async function shrinkPhoto(file: File, maxSide = 1600) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
@@ -105,7 +123,9 @@ export function ProductForm({ product, fitmentText = '', volumeText = '', reorde
     startTransition(() => action(data));
   };
   return (
-    <form onSubmit={onSubmit}>
+    <div className="product-layout">
+    <ProductAssistant formId="product-form" />
+    <form id="product-form" onSubmit={onSubmit}>
       <Messages state={state} />
       <div className="admin-card form-card" style={{ padding: 22, boxShadow: 'none' }}>
         <h2>Basics</h2>
@@ -227,6 +247,7 @@ export function ProductForm({ product, fitmentText = '', volumeText = '', reorde
       </div>
       <div className="admin-actions"><button className="btn" disabled={pending || preparing}>Save product</button></div>
     </form>
+    </div>
   );
 }
 
@@ -264,10 +285,10 @@ export function RefundForm({ orderId, refundableCents, refundedCents, items }: {
   );
 }
 
-export function DeleteProductButton({ id, name }: { id: string; name: string }) {
+export function DeleteProductButton({ id, name, label = 'Delete product' }: { id: string; name: string; label?: string }) {
   return (
     <form action={deleteProductAction.bind(null, id)} onSubmit={(e) => { if (!confirm(panelText(`Delete ${name}? This cannot be undone.`))) e.preventDefault(); }}>
-      <button className="btn btn-danger">Delete product</button>
+      <button className="btn btn-danger">{label}</button>
     </form>
   );
 }
