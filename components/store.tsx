@@ -7,7 +7,6 @@ import { localePath, type Locale } from '@/lib/i18n';
 import { messages } from '@/lib/messages';
 import { Icon } from './ui';
 
-export type Quote = { date: string; topic: string; name: string; email: string; phone: string; zip: string; product: string; message: string };
 type Cart = Record<string, number>;
 
 const getLS = <T,>(key: string, fall: T): T => {
@@ -36,7 +35,6 @@ type Store = {
   getProduct: (id: string) => Product | undefined;
   cart: Cart;
   wishlist: string[];
-  quotes: Quote[];
   cartOpen: boolean;
   setCartOpen: (open: boolean) => void;
   count: number;
@@ -44,7 +42,6 @@ type Store = {
   addToCart: (id: string, qty?: number) => void;
   setQty: (id: string, n: number) => void;
   toggleWish: (id: string) => void;
-  saveQuote: (q: Quote) => void;
   toast: (msg: string) => void;
 };
 
@@ -60,7 +57,6 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
   const [hydrated, setHydrated] = useState(false);
   const [cart, setCart] = useState<Cart>({});
   const [wishlist, setWishlist] = useState<string[]>([]);
-  const [quotes, setQuotes] = useState<Quote[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
   const nextToast = useRef(0);
@@ -71,7 +67,6 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
   useEffect(() => {
     setCart(getLS('agrotires-demo-cart', {}));
     setWishlist(getLS('agrotires-demo-wishlist', []));
-    setQuotes(getLS('agrotires-demo-quotes', []));
     setHydrated(true);
     // Only someone who chose Spanish before returns to it, and only from the home page;
     // shared links and search engines always get the language in the URL.
@@ -108,7 +103,6 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
       getProduct,
       cart,
       wishlist,
-      quotes,
       cartOpen,
       setCartOpen,
       count: Object.values(cart).reduce((n, v) => n + v, 0),
@@ -135,14 +129,9 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
         setLS('agrotires-demo-wishlist', next);
         toast(saved ? t.cart.removed : t.cart.saved);
       },
-      saveQuote(q) {
-        const next = [...quotes, q];
-        setQuotes(next);
-        setLS('agrotires-demo-quotes', next);
-      },
       toast,
     };
-  }, [locale, hydrated, products, cart, wishlist, quotes, cartOpen, toast]);
+  }, [locale, hydrated, products, cart, wishlist, cartOpen, toast]);
 
   return (
     <StoreContext.Provider value={value}>

@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useState, type FormEvent } from 'react';
 import { BUSINESS, money } from '@/lib/catalog';
-import { LOCALE_TAGS } from '@/lib/i18n';
 import { ProductCard } from './product';
 import { useStore } from './store';
 import { EmptyState, Icon, PageHead } from './ui';
@@ -66,8 +66,35 @@ export function CheckoutView() {
 const TOPICS = ['Product question', 'Freight shipping', 'Equipment compatibility', 'Bulk order', 'Something else'];
 
 export function QuoteView() {
-  const { quotes, hydrated, saveQuote, toast, products, t, href, locale } = useStore();
+  const { toast, products, t, locale } = useStore();
   const q = t.quote;
+  const [sending, setSending] = useState(false);
+  const [sentTo, setSentTo] = useState('');
+  const [error, setError] = useState('');
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (sending) return;
+    const form = e.currentTarget;
+    const d = Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
+    setSending(true);
+    setError('');
+    setSentTo('');
+    try {
+      const res = await fetch('/api/quotes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...d, locale }) });
+      if (res.ok) {
+        form.reset();
+        setSentTo(d.email);
+        toast(q.toast);
+      } else {
+        setError(res.status === 429 ? q.errBusy : res.status === 400 ? q.errInvalid : q.errDown(BUSINESS.contactEmail));
+      }
+    } catch {
+      setError(q.errDown(BUSINESS.contactEmail));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const composeEmail = (f: HTMLFormElement | null) => {
     if (!f || !f.reportValidity()) return;
@@ -86,30 +113,16 @@ export function QuoteView() {
         <h2 style={{ margin: '10px 0 18px' }}>{q.h2a}<br />{q.h2b}</h2>
         <p>{q.intro}</p>
         <div className="contact-card">
-          <h3><Icon name="info" size="sm" /> {q.previewTitle}</h3>
-          <p>{q.previewA}<strong>{q.previewStrong}</strong>{q.previewB(BUSINESS.contactEmail)}</p>
+          <h3><Icon name="info" size="sm" /> {q.howTitle}</h3>
+          <p>{q.howText}</p>
           <a className="contact-email-inline" href={`mailto:${BUSINESS.contactEmail}`}>{BUSINESS.contactEmail}</a>
-          <Link className="text-link" href={href('/setup')}>{q.launch} <Icon name="arrow" size="sm" /></Link>
         </div>
-        {hydrated && quotes.length ? (
-          <div className="quote-list">
-            <h3 style={{ fontSize: 17, margin: '20px 0 0' }}>{q.savedTitle}</h3>
-            {quotes.slice().reverse().slice(0, 4).map((saved, i) => (
-              <div className="quote-card" key={i}><strong>{q.topics[saved.topic] || saved.topic}</strong><small>{saved.date} · {q.savedNote}</small></div>
-            ))}
-          </div>
-        ) : null}
       </div>
       <div className="form-card">
         <h2>{q.formTitle}</h2>
         <p style={{ fontSize: 12 }}>{q.required}</p>
-        <form id="quote-form" onSubmit={(e) => {
-          e.preventDefault();
-          const d = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, string>;
-          saveQuote({ date: new Date().toLocaleString(LOCALE_TAGS[locale]), topic: d.topic, name: d.name, email: d.email, phone: d.phone, zip: d.zip, product: d.product, message: d.message });
-          toast(q.toast);
-          e.currentTarget.reset();
-        }}>
+        <form id="quote-form" onSubmit={submit}>
+          <input name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1 }} />
           <div className="form-grid">
             <div className="field"><label className="field-label" htmlFor="quote-name">{q.name}</label><input id="quote-name" className="text-input" name="name" required autoComplete="name" /></div>
             <div className="field"><label className="field-label" htmlFor="quote-email">{q.email}</label><input id="quote-email" className="text-input" name="email" type="email" autoComplete="email" required /></div>
@@ -132,9 +145,11 @@ export function QuoteView() {
             <div className="field full-width"><label className="field-label" htmlFor="quote-message">{q.more}</label><textarea className="textarea" id="quote-message" name="message" rows={5} required placeholder={q.morePh} /></div>
           </div>
           <div className="quote-actions">
-            <button className="btn btn-block" type="button" onClick={(e) => composeEmail(e.currentTarget.form)}>{q.compose} <Icon name="mail" size="sm" /></button>
-            <button className="btn btn-light btn-block" type="submit">{q.draft} <Icon name="file" size="sm" /></button>
+            <button className="btn btn-block" type="submit" disabled={sending} aria-busy={sending}>{sending ? q.sending : q.send} <Icon name="arrow" size="sm" /></button>
+            <button className="btn btn-light btn-block" type="button" onClick={(e) => composeEmail(e.currentTarget.form)}>{q.compose} <Icon name="mail" size="sm" /></button>
           </div>
+          {error ? <div className="notice" role="alert" style={{ marginTop: 14 }}><Icon name="info" size="sm" /> {error}</div> : null}
+          {sentTo ? <div className="quote-card" role="status" style={{ marginTop: 14 }}><strong>{q.sentTitle}</strong><small>{q.sentBody(sentTo)}</small></div> : null}
           <p className="fine-print">{q.fine}</p>
         </form>
       </div>
