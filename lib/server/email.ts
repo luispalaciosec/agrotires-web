@@ -113,6 +113,26 @@ export function orderReviewMail(order: Order, detail: string): Mail {
   };
 }
 
+export function orderShippedMail(order: Order): Mail {
+  const es = order.locale === 'es';
+  const ref = orderRef(order.id);
+  const address = addressLines(order);
+  return {
+    to: order.email,
+    replyTo: teamEmail(),
+    subject: `${testPrefix()}${es ? 'Tu pedido fue despachado' : 'Your order has been dispatched'}: ${ref}`,
+    text: [
+      es ? 'Tu pedido de AGROTIRES fue despachado.' : 'Your AGROTIRES order has been dispatched.',
+      '',
+      `${es ? 'Referencia del pedido' : 'Order reference'}: ${ref}`,
+      ...itemLines(order),
+      ...(address.length ? ['', es ? 'Enviar a:' : 'Ship to:', ...address] : []),
+      '',
+      es ? 'Puedes responder a este correo si tienes preguntas.' : 'You can reply to this email with any questions.',
+    ].join('\n'),
+  };
+}
+
 export function orderRefundMail(order: Order, cents: number): Mail {
   const es = order.locale === 'es';
   const ref = orderRef(order.id);
@@ -136,5 +156,6 @@ export function orderRefundMail(order: Order, cents: number): Mail {
 
 export const notifyQuote = (q: Quote) => send([quoteTeamMail(q)]);
 export const notifyPaid = (order: Order) => send([orderCustomerMail(order), orderTeamMail(order)]);
+export const notifyShipped = (order: Order) => send([orderShippedMail(order)]);
 export const notifyRefund = (order: Order, cents: number) => send([orderRefundMail(order, cents)]);
 export const notifyReview = (order: Order, detail: string) => send([orderReviewMail(order, detail)]);

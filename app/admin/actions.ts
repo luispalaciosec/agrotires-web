@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { isUploadedImage, productImages } from '@/lib/catalog';
-import { adminConfigured, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
+import { adminConfigured, isFullAdmin, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
+import { notifyShipped } from '@/lib/server/email';
 import { importProducts } from '@/lib/server/csv-import';
 import { rateLimited } from '@/lib/server/http';
 import { issueRefund, refundableCents } from '@/lib/server/orders';
@@ -36,7 +37,7 @@ async function removePhoto(store: Store, img: string) {
 export async function loginAction(_: FormState, form: FormData): Promise<FormState> {
   if (!adminConfigured()) return { error: 'The admin panel is not configured yet.' };
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
-  if (rateLimited(`login:${ip}`, 5, 15 * 60_000)) return { error: 'Too many attempts. Try again in 15 minutes.' };
+  if (await rateLimited(`login:${ip}`, 5, 15 * 60_000)) return { error: 'Too many attempts. Try again in 15 minutes.' };
   if (!(await logIn(String(form.get('email') || ''), String(form.get('password') || '')))) return { error: 'Incorrect email or password.' };
   redirect('/admin');
 }
@@ -117,6 +118,7 @@ export async function importProductsAction(_: FormState, form: FormData): Promis
 
 export async function refundOrderAction(id: string, _: FormState, form: FormData): Promise<FormState> {
   await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can issue refunds.' };
   const store = requireStore();
   if (!paymentsEnabled()) return { error: 'PayPal is not connected, so refunds are not available.' };
   const order = await store.getOrder(id);
@@ -146,7 +148,8 @@ export async function updateOrderStatusAction(id: string, status: OrderStatus) {
   const store = requireStore();
   const order = await store.getOrder(id);
   if (!order || !ORDER_TRANSITIONS[order.status]?.includes(status)) throw new Error('That status change is not allowed');
-  await store.updateOrder(id, { status });
+  const updated = await store.updateOrder(id, { status });
+  if (status === 'fulfilled') await notifyShipped(updated);
   revalidatePath(`/admin/orders/${id}`);
 }
 

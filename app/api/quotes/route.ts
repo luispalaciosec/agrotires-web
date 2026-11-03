@@ -18,7 +18,7 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
-  if (rateLimited(`quote:${clientIp(req)}`, 5)) return json({ error: 'Too many requests' }, 429);
+  if (await rateLimited(`quote:${clientIp(req)}`, 5)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();
   if (!store) return json({ error: 'Quote requests are not available yet' }, 503);
 

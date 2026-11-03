@@ -42,6 +42,17 @@ export async function isAdmin() {
   return verifyToken((await cookies()).get(COOKIE)?.value, process.env.ADMIN_SESSION_SECRET!);
 }
 
+// Moving money takes the admin role; staff can run the store but not refund. The shared
+// password is only for a local computer and has no roles.
+export async function isFullAdmin() {
+  if (!usesSupabaseAuth()) return isAdmin();
+  const client = await authClient();
+  const { data } = await client.auth.getUser();
+  if (!data.user) return false;
+  const { data: profile } = await client.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+  return profile?.role === 'admin';
+}
+
 // Must run in every admin page and server action: layouts do not protect actions.
 export async function requireAdmin() {
   if (!(await isAdmin())) redirect('/admin/login');

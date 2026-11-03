@@ -8,7 +8,7 @@ const schema = z.object({ paypalOrderId: z.string().regex(/^[A-Za-z0-9-]{1,64}$/
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
-  if (rateLimited(`capture:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
+  if (await rateLimited(`capture:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();
   if (!store || !paymentsEnabled()) return json({ error: 'Payments are not available yet' }, 503);
 

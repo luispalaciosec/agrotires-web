@@ -147,6 +147,15 @@ function unwrap<T>({ data, error }: { data: T | null; error: { message: string }
   return data as T;
 }
 
+let limiter: SupabaseClient | undefined;
+
+export async function hitSharedRateLimit(key: string, limit: number, windowMs: number) {
+  limiter ??= createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data, error } = await limiter.rpc('hit_rate_limit', { p_key: key, p_limit: limit, p_window_ms: windowMs }).abortSignal(AbortSignal.timeout(1500));
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
 // Uses the secret key, so row level security does not apply here. Server code must never
 // pass browser input to it unchecked, and this module must never reach the browser.
 export class SupabaseStore implements Store {
@@ -277,6 +286,7 @@ export class SupabaseStore implements Store {
     const languages = await this.db.from('products').select('name_es', { head: true });
     const photos = await this.db.storage.getBucket(PHOTO_BUCKET);
     const refunds = await this.db.from('orders').select('refunded_cents', { head: true });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error };
+    const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error };
   }
 }

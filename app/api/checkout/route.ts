@@ -9,7 +9,7 @@ const schema = z.object({ email: z.string().trim().email().max(200), items: cart
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
-  if (rateLimited(`checkout:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
+  if (await rateLimited(`checkout:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();
   if (!store || !paymentsEnabled()) return json({ error: 'Payments are not available yet' }, 503);
 

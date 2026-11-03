@@ -1,6 +1,25 @@
 import type { NextConfig } from 'next';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const dev = process.env.NODE_ENV === 'development';
+
+// Next.js prerendered pages need inline scripts, so scripts stay limited by origin rather than by nonce.
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''} https://*.paypal.com https://*.paypalobjects.com`,
+  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob: https://*.paypal.com https://*.paypalobjects.com${supabaseUrl ? ` ${new URL(supabaseUrl).origin}` : ''}`,
+  "font-src 'self'",
+  `connect-src 'self' https://*.paypal.com https://*.paypalobjects.com${dev ? ' ws:' : ''}`,
+  'frame-src https://*.paypal.com',
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 const securityHeaders = [
+  { key: 'Content-Security-Policy', value: contentSecurityPolicy },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -16,8 +35,6 @@ const aliases: [string, string][] = [
   ['/login', '/account'],
   ['/register', '/account'],
 ];
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 const config: NextConfig = {
   poweredByHeader: false,

@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { hitSharedRateLimit, supabaseConfigured } from './supabase-store';
+
 const MAX_BODY = 20_000;
 const hits = new Map<string, { count: number; reset: number }>();
 
@@ -5,8 +8,23 @@ export const json = (body: unknown, status = 200) => Response.json(body, { statu
 
 export const clientIp = (req: Request) => req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
 
-// Per server instance only; a shared limiter is needed once this runs on several instances.
-export function rateLimited(key: string, limit: number, windowMs = 60_000) {
+let sharedLimitWarned = false;
+
+// Counted in the database so every server instance sees the same attempts. If it cannot answer,
+// each instance still limits on its own rather than leaving the forms open or blocking customers.
+export async function rateLimited(key: string, limit: number, windowMs = 60_000) {
+  if (supabaseConfigured()) {
+    try {
+      return await hitSharedRateLimit(createHash('sha256').update(key).digest('hex'), limit, windowMs);
+    } catch (e) {
+      if (!sharedLimitWarned) console.error('Shared rate limit unavailable', e);
+      sharedLimitWarned = true;
+    }
+  }
+  return localRateLimited(key, limit, windowMs);
+}
+
+function localRateLimited(key: string, limit: number, windowMs: number) {
   const now = Date.now();
   const hit = hits.get(key);
   if (!hit || hit.reset < now) {

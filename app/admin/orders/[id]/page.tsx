@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { money } from '@/lib/catalog';
-import { requireAdmin } from '@/lib/server/admin-auth';
+import { isFullAdmin, requireAdmin } from '@/lib/server/admin-auth';
 import { orderRef } from '@/lib/server/email';
 import { refundableCents } from '@/lib/server/orders';
 import { paymentsEnabled } from '@/lib/server/paypal';
@@ -38,14 +38,14 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           </p>
         ) : null}
         <div className="admin-actions" style={{ marginTop: 16 }}>
-          {order.status === 'paid' ? <form action={updateOrderStatusAction.bind(null, order.id, 'fulfilled')}><button className="btn">Mark as fulfilled</button></form> : null}
+          {order.status === 'paid' ? <form action={updateOrderStatusAction.bind(null, order.id, 'fulfilled')}><button className="btn">Mark as fulfilled and email customer</button></form> : null}
           {order.status === 'pending_payment' ? <form action={updateOrderStatusAction.bind(null, order.id, 'cancelled')}><button className="btn btn-danger">Cancel order</button></form> : null}
         </div>
       </div>
       {order.paypalCaptureId && (order.status === 'paid' || order.status === 'fulfilled' || order.status === 'refunded') ? (
         <div className="admin-card">
           <h2>Refund</h2>
-          {paymentsEnabled() ? <RefundForm orderId={order.id} refundableCents={refundableCents(order)} refundedCents={order.refundedCents ?? 0} /> : <p className="muted" style={{ margin: 0 }}>Refunds are available once PayPal is connected.</p>}
+          {!(await isFullAdmin()) ? <p className="muted" style={{ margin: 0 }}>Only an administrator can issue refunds.</p> : paymentsEnabled() ? <RefundForm orderId={order.id} refundableCents={refundableCents(order)} refundedCents={order.refundedCents ?? 0} /> : <p className="muted" style={{ margin: 0 }}>Refunds are available once PayPal is connected.</p>}
         </div>
       ) : null}
     </>
