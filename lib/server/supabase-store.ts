@@ -5,7 +5,7 @@ import type { Fitment } from '../fitment';
 import type { Locale } from '../i18n';
 import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
-import type { SavedMachine, Subscriber, AuditEntry, InventorySetting, PurchaseOrder, ReturnRequest, ReturnStatus, StockLevel, StockMovement, StoreEvent, TeamMember, Warehouse, B2bAccount, Review, ReviewStatus, SalesRule, Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { ContentPage, SavedMachine, Subscriber, AuditEntry, InventorySetting, PurchaseOrder, ReturnRequest, ReturnStatus, StockLevel, StockMovement, StoreEvent, TeamMember, Warehouse, B2bAccount, Review, ReviewStatus, SalesRule, Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -156,6 +156,8 @@ const b2bFromRow = (r: B2bRow): B2bAccount => ({ profileId: r.profile_id, email:
 type ReviewRow = { id: string; order_id: string; rating: number; author: string; body: string; locale: string; status: ReviewStatus; created_at: string; products: { slug: string } | null };
 const reviewFromRow = (r: ReviewRow): Review[] => (r.products ? [{ id: r.id, productId: r.products.slug, orderId: r.order_id, rating: r.rating, author: r.author, body: r.body, locale: r.locale, status: r.status, createdAt: r.created_at }] : []);
 
+type PageRow = { id: string; slug: string; title_en: string; title_es: string; desc_en: string; desc_es: string; blocks: ContentPage['blocks']; published: boolean; updated_at: string };
+const pageFromRow = (r: PageRow): ContentPage => ({ id: r.id, slug: r.slug, titleEn: r.title_en, titleEs: r.title_es, descEn: r.desc_en, descEs: r.desc_es, blocks: r.blocks ?? [], published: r.published, updatedAt: r.updated_at });
 type PoRow = { supplier_email?: string | null; sent_at?: string | null; id: string; supplier: string; warehouse_id: string | null; status: PurchaseOrder['status']; note: string | null; items: PurchaseOrder['items']; created_at: string; received_at: string | null };
 const poFromRow = (r: PoRow): PurchaseOrder => ({ supplierEmail: r.supplier_email ?? undefined, sentAt: r.sent_at ?? undefined, id: r.id, supplier: r.supplier, warehouseId: r.warehouse_id ?? undefined, status: r.status, note: r.note ?? undefined, items: r.items, createdAt: r.created_at, receivedAt: r.received_at ?? undefined });
 type ReturnRow = { id: string; order_id: string; items: ReturnRequest['items']; reason: string; note: string | null; status: ReturnStatus; team_note: string | null; created_at: string };
@@ -282,6 +284,32 @@ export class SupabaseStore implements Store {
 
   async markPurchaseOrderSent(id: string) {
     unwrap(await this.db.from('purchase_orders').update({ sent_at: new Date().toISOString() }).eq('id', id).select('id'));
+  }
+
+  async listPages() {
+    return unwrap<PageRow[]>(await this.db.from('pages').select().order('created_at', { ascending: false }).limit(500)).map(pageFromRow);
+  }
+
+  async getPage(id: string) {
+    if (!UUID.test(id)) return undefined;
+    const row = unwrap<PageRow | null>(await this.db.from('pages').select().eq('id', id).maybeSingle());
+    return row ? pageFromRow(row) : undefined;
+  }
+
+  async getPageBySlug(slug: string) {
+    const row = unwrap<PageRow | null>(await this.db.from('pages').select().eq('slug', slug).maybeSingle());
+    return row ? pageFromRow(row) : undefined;
+  }
+
+  async savePage(id: string | null, p: Omit<ContentPage, 'id' | 'updatedAt'>) {
+    const values = { slug: p.slug, title_en: p.titleEn, title_es: p.titleEs, desc_en: p.descEn, desc_es: p.descEs, blocks: p.blocks, published: p.published, updated_at: new Date().toISOString() };
+    const query = id ? this.db.from('pages').update(values).eq('id', id) : this.db.from('pages').insert(values);
+    return pageFromRow(unwrap<PageRow>(await query.select().single()));
+  }
+
+  async deletePage(id: string) {
+    if (!UUID.test(id)) return;
+    unwrap(await this.db.from('pages').delete().eq('id', id).select('id'));
   }
 
   async addSubscriber(email: string, locale: string) {
@@ -694,7 +722,8 @@ export class SupabaseStore implements Store {
     const sales = await this.db.from('reviews').select('id').limit(1);
     const ops = await this.db.from('audit_log').select('id').limit(1);
     const extras = await this.db.from('wishlists').select('product_slug').limit(1);
+    const pages = await this.db.from('pages').select('id').limit(1);
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error, migration0011: !ops.error, migration0012: !extras.error };
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error, migration0011: !ops.error, migration0012: !extras.error, migration0013: !pages.error };
   }
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { isUploadedImage, productImages } from '@/lib/catalog';
+import { blocksSchema, validSlug } from '@/lib/page-blocks';
 import { adminConfigured, currentAdmin, isFullAdmin, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
 import { brandedHtml, emailEnabled, send, sendPurchaseOrder } from '@/lib/server/email';
 import { shipOrder, updateShipment } from '@/lib/server/shipments';
@@ -520,6 +521,48 @@ export async function sendPurchaseOrderAction(id: string, _: FormState): Promise
   await audit('Sent supplier order', id.slice(0, 8).toUpperCase(), po.supplierEmail);
   revalidatePath('/admin/inventory');
   return { notice: 'Sent to supplier.' };
+}
+
+export async function savePageAction(id: string | null, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can do this.' };
+  const store = requireStore();
+  const v = (name: string, max: number) => String(form.get(name) ?? '').trim().slice(0, max);
+  const slug = v('slug', 80);
+  if (!validSlug(slug)) return { error: 'Use only lowercase letters, numbers and hyphens in the address.' };
+  if (!v('titleEn', 200)) return { error: 'Add a title in English.' };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(form.get('blocks') ?? '[]'));
+  } catch {
+    raw = undefined;
+  }
+  const blocks = blocksSchema.safeParse(raw);
+  if (!blocks.success) return { error: blocks.error.issues.some((i) => i.message === 'link') ? 'A button link must start with / or https://.' : 'The blocks could not be read. Reload the page and try again.' };
+  let saved;
+  try {
+    const taken = await store.getPageBySlug(slug);
+    if (taken && taken.id !== id) return { error: 'Another page already uses that address.' };
+    saved = await store.savePage(id, { slug, titleEn: v('titleEn', 200), titleEs: v('titleEs', 200), descEn: v('descEn', 300), descEs: v('descEs', 300), blocks: blocks.data, published: form.get('published') === 'on' });
+  } catch (e) {
+    console.error('Could not save the page', e);
+    return { error: 'The page could not be saved. Run the migration 0013_pages.sql first.' };
+  }
+  await audit(id ? 'Edited page' : 'Created page', slug, saved.published ? 'published' : 'draft');
+  revalidatePath('/admin/pages');
+  if (!id) redirect(`/admin/pages/${saved.id}`);
+  revalidatePath(`/admin/pages/${id}`);
+  return { notice: 'Page saved.' };
+}
+
+export async function deletePageAction(id: string) {
+  await requireAdmin();
+  if (!(await isFullAdmin())) return;
+  const store = requireStore();
+  await store.deletePage(id);
+  await audit('Deleted page', id.slice(0, 8).toUpperCase());
+  revalidatePath('/admin/pages');
+  redirect('/admin/pages');
 }
 
 export async function receivePurchaseOrderAction(id: string) {

@@ -3,6 +3,7 @@ import { DEMO_CATALOG, catHref, categories, guides, productHref } from '@/lib/ca
 import { localePath } from '@/lib/i18n';
 import { getPublicProducts } from '@/lib/products';
 import { INDEXABLE, absolute } from '@/lib/seo';
+import { getStore } from '@/lib/server/store';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (!INDEXABLE) return [];
@@ -10,6 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/', '/shop', '/finder', '/about', '/guides', '/help', '/quote',
     ...categories.filter((c) => c.id !== 'machine').map((c) => catHref(c.id)),
     ...guides.map((g) => `/guide/${g.id}`),
+    ...((await getStore()?.listPages().catch(() => [])) ?? []).filter((p) => p.published).map((p) => `/p/${p.slug}`),
     ...(DEMO_CATALOG ? [] : (await getPublicProducts()).map((p) => productHref(p.id))),
   ];
   return paths.flatMap((p) => {

@@ -15,6 +15,7 @@ const GROUPS: { title: string; links: { href: string; label: string; icon: strin
     { href: '/admin/reviews', label: 'Reviews', icon: 'heart' },
   ] },
   { title: 'Catalog', links: [{ href: '/admin/products', label: 'Products', icon: 'box' }, { href: '/admin/inventory', label: 'Inventory', icon: 'wrench' }] },
+  { title: 'Content', links: [{ href: '/admin/pages', label: 'Pages', icon: 'guide' }] },
   { title: 'Insight', links: [{ href: '/admin/analytics', label: 'Analytics', icon: 'bolt' }, { href: '/admin/accounting', label: 'Accounting', icon: 'guide' }, { href: '/admin/activity', label: 'Activity', icon: 'clock' }] },
   { title: 'Setup', links: [
     { href: '/admin/shipping', label: 'Shipping rates', icon: 'compass' },
