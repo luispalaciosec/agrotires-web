@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Locale } from '../i18n';
-import type { Order, OrderItem, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { ShippingAddress, Order, OrderItem, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -93,7 +93,7 @@ export function productToRow(p: StoredProduct): ProductRow {
 type ItemRow = { sku: string; name: string; unit_price_cents: number; quantity: number; products: { slug: string } | null };
 type OrderRow = {
   id: string; email: string; status: Order['status']; subtotal_cents: number; shipping_cents: number; tax_cents: number; total_cents: number;
-  locale: Locale; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
+  locale: Locale; shipping_address?: ShippingAddress | null; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
 };
 type QuoteRow = {
   id: string; name: string; email: string; phone: string | null; delivery_zip: string | null; topic: string; product_name: string | null;
@@ -112,6 +112,7 @@ export function orderFromRow(r: OrderRow): Order {
     totalCents: r.total_cents,
     currency: 'USD',
     locale: r.locale,
+    shippingAddress: r.shipping_address ?? undefined,
     paypalOrderId: r.paypal_order_id ?? undefined,
     paypalCaptureId: r.paypal_capture_id ?? undefined,
     createdAt: r.created_at,
@@ -183,12 +184,13 @@ export class SupabaseStore implements Store {
     return row ? orderFromRow(row) : undefined;
   }
 
-  async updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId'>>) {
+  async updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress'>>) {
     const row = unwrap<OrderRow>(await this.db.from('orders').update({
       updated_at: new Date().toISOString(),
       ...(patch.status ? { status: patch.status } : {}),
       ...(patch.paypalOrderId ? { paypal_order_id: patch.paypalOrderId } : {}),
       ...(patch.paypalCaptureId ? { paypal_capture_id: patch.paypalCaptureId } : {}),
+      ...(patch.shippingAddress ? { shipping_address: patch.shippingAddress } : {}),
     }).eq('id', id).select(ORDER_SELECT).single());
     return orderFromRow(row);
   }

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { BUSINESS, money } from '@/lib/catalog';
+import { PayPalCheckout, type PaidOrder, type PayPalConfig } from './paypal-checkout';
 import { ProductCard } from './product';
 import { useStore } from './store';
 import { EmptyState, Icon, PageHead } from './ui';
@@ -16,9 +17,25 @@ export function WishlistItems() {
     : <EmptyState locale={locale} title={t.wishlist.emptyTitle} body={t.wishlist.emptyBody} />;
 }
 
-export function CheckoutView() {
-  const { cart, total, hydrated, getProduct, t, href, locale } = useStore();
+export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
+  const { cart, total, hydrated, getProduct, t, href, locale, clearCart } = useStore();
   const c = t.checkout;
+  const l = c.live;
+  const [paid, setPaid] = useState<PaidOrder>();
+  if (paid) {
+    return (
+      <main id="main-content">
+        <PageHead locale={locale} title={paid.status === 'paid' ? l.doneTitle : l.pendingTitle} desc={paid.status === 'paid' ? l.doneDesc : l.pendingDesc} crumbs={l.crumb} />
+        <div className="content-narrow">
+          <div className="form-card" role="status">
+            <h2>{l.doneRef}: {paid.orderId.slice(0, 8).toUpperCase()}</h2>
+            <p>{l.doneBody(paid.email)}</p>
+            <Link className="btn" href={href('/shop')}>{c.keep} <Icon name="arrow" size="sm" /></Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
   const items = Object.entries(cart).filter(([id]) => getProduct(id));
   if (!hydrated) return <main id="main-content"><PageHead locale={locale} title={c.title} desc={c.desc} crumbs={c.crumb} /></main>;
   if (!items.length) {
@@ -26,6 +43,28 @@ export function CheckoutView() {
       <main id="main-content">
         <PageHead locale={locale} title={c.emptyPage} desc={c.emptyDesc} crumbs={c.emptyCrumb} />
         <div className="content-narrow"><EmptyState locale={locale} title={c.emptyTitle} body={c.emptyBody} /></div>
+      </main>
+    );
+  }
+  const lines = items.map(([id, qty]) => {
+    const p = getProduct(id)!;
+    return <div className="checkout-line" key={id}><span>{p.name} <span className="muted">× {qty}</span></span><strong>{money(p.price * qty)}</strong></div>;
+  });
+  if (paypal) {
+    return (
+      <main id="main-content">
+        <PageHead locale={locale} title={l.title} desc={l.desc} crumbs={l.crumb} />
+        <div className="container checkout-grid">
+          <div className="form-card">
+            <PayPalCheckout config={paypal} onDone={(order) => { setPaid(order); clearCart(); }} />
+          </div>
+          <aside className="checkout-summary">
+            <h3>{l.summary}</h3>
+            {lines}
+            <div className="checkout-total"><span>{l.total}</span><span>{money(total)}</span></div>
+            {paypal.sandbox ? <p className="mini muted">{l.noExtras}</p> : null}
+          </aside>
+        </div>
       </main>
     );
   }
@@ -50,10 +89,7 @@ export function CheckoutView() {
         </div>
         <aside className="checkout-summary">
           <h3>{c.summary}</h3>
-          {items.map(([id, qty]) => {
-            const p = getProduct(id)!;
-            return <div className="checkout-line" key={id}><span>{p.name} <span className="muted">× {qty}</span></span><strong>{money(p.price * qty)}</strong></div>;
-          })}
+          {lines}
           <div className="checkout-total"><span>{c.subtotal}</span><span>{money(total)}</span></div>
           <p className="mini muted">{c.noOrder}</p>
           <div className="notice"><Icon name="shield" size="sm" /> {c.paymentNote}</div>

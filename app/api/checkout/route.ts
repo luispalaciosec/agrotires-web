@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     await store.updateOrder(order.id, { paypalOrderId });
     return json({ orderId: order.id, paypalOrderId }, 201);
   } catch (e) {
-    if (e instanceof CartError) return json({ error: e.message }, 400);
+    if (e instanceof CartError) return json({ error: e.message, code: e.code }, 400);
     console.error('Checkout failed', e);
     return json({ error: 'Could not start payment' }, 502);
   }

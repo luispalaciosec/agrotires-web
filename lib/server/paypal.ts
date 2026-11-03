@@ -1,6 +1,6 @@
 import { DEMO_CATALOG } from '../catalog';
 import { centsToValue } from './pricing';
-import type { Order } from './store';
+import type { Order, ShippingAddress } from './store';
 
 const BASES = { sandbox: 'https://api-m.sandbox.paypal.com', live: 'https://api-m.paypal.com' };
 const baseUrl = () => (process.env.PAYPAL_ENV === 'live' ? BASES.live : BASES.sandbox);
@@ -13,14 +13,17 @@ export function paymentsEnabled() {
 }
 
 export class PayPalError extends Error {
-  constructor(message: string, public status: number) {
+  constructor(message: string, public status: number, public issue?: string) {
     super(message);
   }
 }
 
 async function call<T>(path: string, init: RequestInit): Promise<T> {
   const res = await fetch(baseUrl() + path, { ...init, signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new PayPalError(`PayPal ${path} answered ${res.status}`, res.status);
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined) as { details?: { issue?: string }[] } | undefined;
+    throw new PayPalError(`PayPal ${path} answered ${res.status}`, res.status, body?.details?.[0]?.issue);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -57,14 +60,26 @@ export async function createPayPalOrder(order: Order) {
   return id;
 }
 
-export type PayPalCapture = { id: string; status: string; amount: { currency_code: string; value: string } };
+export type PayPalCapture = { id: string; status: string; amount: { currency_code: string; value: string }; shipping?: ShippingAddress };
+
+type PayPalShipping = {
+  name?: { full_name?: string };
+  address?: { address_line_1?: string; address_line_2?: string; admin_area_2?: string; admin_area_1?: string; postal_code?: string; country_code?: string };
+};
+
+function shippingFrom(s?: PayPalShipping): ShippingAddress | undefined {
+  const a = s?.address;
+  if (!a?.address_line_1) return undefined;
+  return { name: s?.name?.full_name ?? '', line1: a.address_line_1, line2: a.address_line_2, city: a.admin_area_2 ?? '', state: a.admin_area_1 ?? '', postalCode: a.postal_code ?? '', country: a.country_code ?? '' };
+}
 
 export async function capturePayPalOrder(paypalOrderId: string, ourOrderId: string) {
-  const res = await authed<{ purchase_units: { payments: { captures: PayPalCapture[] } }[] }>(
+  const res = await authed<{ purchase_units: { shipping?: PayPalShipping; payments: { captures: PayPalCapture[] } }[] }>(
     `/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`, {}, `capture-${ourOrderId}`);
-  const capture = res.purchase_units?.[0]?.payments?.captures?.[0];
+  const unit = res.purchase_units?.[0];
+  const capture = unit?.payments?.captures?.[0];
   if (!capture) throw new PayPalError('PayPal capture response had no capture', 502);
-  return capture;
+  return { ...capture, shipping: shippingFrom(unit.shipping) };
 }
 
 export async function verifyWebhook(headers: Headers, event: unknown) {

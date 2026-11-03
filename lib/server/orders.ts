@@ -3,15 +3,20 @@ import type { PayPalCapture } from './paypal';
 import type { Order, Store } from './store';
 
 // Used by both the capture route and the webhook, in whichever order they arrive.
-export async function settleCapture(store: Store, order: Order, capture: PayPalCapture) {
-  if (order.status === 'paid' || order.status === 'fulfilled' || order.status === 'refunded') return order;
+export async function settleCapture(store: Store, stale: Order, capture: PayPalCapture) {
+  // Capturing takes seconds and the webhook can land meanwhile, so never decide from the earlier read.
+  const order = (await store.getOrder(stale.id)) ?? stale;
+  const shippingAddress = capture.shipping;
+  if (order.status === 'paid' || order.status === 'fulfilled' || order.status === 'refunded') {
+    return shippingAddress && !order.shippingAddress ? store.updateOrder(order.id, { shippingAddress }) : order;
+  }
   const amountMatches = capture.amount.currency_code === order.currency && valueToCents(capture.amount.value) === order.totalCents;
   if (capture.status === 'COMPLETED' && amountMatches) {
     await store.reduceStock(order.items);
-    return store.updateOrder(order.id, { status: 'paid', paypalCaptureId: capture.id });
+    return store.updateOrder(order.id, { status: 'paid', paypalCaptureId: capture.id, shippingAddress });
   }
   if (capture.status === 'PENDING' && amountMatches) {
-    return store.updateOrder(order.id, { paypalCaptureId: capture.id });
+    return store.updateOrder(order.id, { paypalCaptureId: capture.id, shippingAddress });
   }
   console.error(`Order ${order.id} needs review: capture ${capture.id} is ${capture.status} for ${capture.amount.value} ${capture.amount.currency_code}`);
   return store.updateOrder(order.id, { status: 'payment_failed', paypalCaptureId: capture.id });

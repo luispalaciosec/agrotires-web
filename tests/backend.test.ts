@@ -6,6 +6,7 @@ import { POST as capture } from '@/app/api/checkout/capture/route';
 import { POST as checkout } from '@/app/api/checkout/route';
 import { POST as webhook } from '@/app/api/paypal/webhook/route';
 import { POST as quotes } from '@/app/api/quotes/route';
+import { settleCapture } from '@/lib/server/orders';
 import { paymentsEnabled } from '@/lib/server/paypal';
 import { priceCart, valueToCents } from '@/lib/server/pricing';
 import { products as demoProducts } from '@/lib/catalog';
@@ -131,6 +132,53 @@ describe('checkout', () => {
     mockPayPal({ purchase_units: [{ payments: { captures: [{ id: 'CAP2', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1.00' } }] } }] });
     const { paypalOrderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
     expect((await (await capture(post('/api/checkout/capture', { paypalOrderId }))).json()).status).toBe('payment_failed');
+  });
+
+  it('saves the address PayPal returns, and a decline fails the order without a charge', async () => {
+    enablePayments();
+    const shipping = { name: { full_name: 'Ana Ruiz' }, address: { address_line_1: '1 Farm Rd', admin_area_2: 'Ames', admin_area_1: 'IA', postal_code: '50010', country_code: 'US' } };
+    mockPayPal({ purchase_units: [{ shipping, payments: { captures: [{ id: 'CAP4', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1378.00' } }] } }] });
+    const ok = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
+    await capture(post('/api/checkout/capture', { paypalOrderId: ok.paypalOrderId }));
+    expect((await getStore()!.getOrder(ok.orderId))!.shippingAddress).toEqual({ name: 'Ana Ruiz', line1: '1 Farm Rd', city: 'Ames', state: 'IA', postalCode: '50010', country: 'US' });
+
+    mockPayPal();
+    const declined = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 1 }] }))).json();
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) => (String(url).endsWith('/capture') ? Response.json({ details: [{ issue: 'INSTRUMENT_DECLINED' }] }, { status: 422 }) : base(url, init)));
+    const res = await capture(post('/api/checkout/capture', { paypalOrderId: declined.paypalOrderId }));
+    expect(res.status).toBe(402);
+    expect((await res.json()).declined).toBe(true);
+    expect((await getStore()!.getOrder(declined.orderId))!.status).toBe('payment_failed');
+  });
+
+  it('does not reduce stock twice when the webhook lands during capture', async () => {
+    enablePayments();
+    const store = getStore()!;
+    const before = await store.listProducts();
+    await store.saveProducts(before.map((p) => (p.id === 'tire-r1' ? { ...p, stockQty: 10 } : p)));
+    mockPayPal();
+    const { paypalOrderId, orderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
+    const stale = (await store.getOrder(orderId))!;
+    const resource = { id: 'CAP5', status: 'COMPLETED', custom_id: orderId, amount: { currency_code: 'USD', value: '1378.00' } };
+    await webhook(post('/api/paypal/webhook', { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource }));
+    await settleCapture(store, stale, resource);
+    expect((await store.listProducts()).find((p) => p.id === 'tire-r1')!.stockQty).toBe(8);
+    expect(paypalOrderId).toBeTruthy();
+    await store.saveProducts(before);
+  });
+
+  it('sends freight items to a quote instead of charging them as free', async () => {
+    enablePayments();
+    const store = getStore()!;
+    const before = await store.listProducts();
+    await store.saveProducts(before.map((p) => (p.id === 'tire-r1' ? { ...p, shippingClass: 'freight_quote' as const } : p)));
+    const calls = mockPayPal();
+    const res = await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 1 }] }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('freight');
+    expect(calls.length).toBe(0);
+    await store.saveProducts(before);
   });
 
   it('webhook settles a pending order and handles full refunds', async () => {

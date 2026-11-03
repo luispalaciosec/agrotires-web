@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { CheckoutView } from '@/components/account-views';
 import { resolveLocale, type LocaleParams } from '@/lib/locale-params';
+import { paymentsEnabled } from '@/lib/server/paypal';
+import { getStore } from '@/lib/server/store';
 
 export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
   const { t } = await resolveLocale(props);
@@ -8,5 +10,7 @@ export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
 }
 
 export default function CheckoutPage() {
-  return <CheckoutView />;
+  // The client id is public; only it reaches the browser. Changing these settings takes a new deployment.
+  const paypal = paymentsEnabled() && getStore() ? { clientId: process.env.PAYPAL_CLIENT_ID!, sandbox: process.env.PAYPAL_ENV !== 'live' } : undefined;
+  return <CheckoutView paypal={paypal} />;
 }

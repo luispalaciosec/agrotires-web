@@ -41,6 +41,7 @@ type Store = {
   total: number;
   addToCart: (id: string, qty?: number) => void;
   setQty: (id: string, n: number) => void;
+  clearCart: () => void;
   toggleWish: (id: string) => void;
   toast: (msg: string) => void;
 };
@@ -121,6 +122,10 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
         else next[id] = Math.min(99, n);
         setCart(next);
         setLS('agrotires-demo-cart', next);
+      },
+      clearCart() {
+        setCart({});
+        setLS('agrotires-demo-cart', {});
       },
       toggleWish(id) {
         const saved = wishlist.includes(id);

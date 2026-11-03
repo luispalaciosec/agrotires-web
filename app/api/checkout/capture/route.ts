@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { settleCapture } from '@/lib/server/orders';
-import { capturePayPalOrder, paymentsEnabled } from '@/lib/server/paypal';
+import { capturePayPalOrder, PayPalError, paymentsEnabled } from '@/lib/server/paypal';
 import { getStore } from '@/lib/server/store';
 
 const schema = z.object({ paypalOrderId: z.string().regex(/^[A-Za-z0-9-]{1,64}$/) });
@@ -26,6 +26,10 @@ export async function POST(req: Request) {
     const settled = await settleCapture(store, order, capture);
     return json({ orderId: settled.id, status: settled.status });
   } catch (e) {
+    if (e instanceof PayPalError && e.issue === 'INSTRUMENT_DECLINED') {
+      await store.updateOrder(order.id, { status: 'payment_failed' });
+      return json({ error: 'Payment method declined', declined: true }, 402);
+    }
     console.error('Capture failed', e);
     return json({ error: 'Payment could not be completed' }, 502);
   }

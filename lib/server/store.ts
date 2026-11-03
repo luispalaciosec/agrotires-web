@@ -8,6 +8,7 @@ import { SupabaseStore, supabaseConfigured } from './supabase-store';
 // Shapes mirror supabase/migrations/0001_store.sql so the database can replace the local driver.
 export type OrderStatus = 'pending_payment' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded' | 'payment_failed';
 export type OrderItem = { productId: string; sku: string; name: string; unitPriceCents: number; quantity: number };
+export type ShippingAddress = { name: string; line1: string; line2?: string; city: string; state: string; postalCode: string; country: string };
 export type Order = {
   id: string;
   email: string;
@@ -19,6 +20,7 @@ export type Order = {
   totalCents: number;
   currency: 'USD';
   locale?: Locale;
+  shippingAddress?: ShippingAddress;
   paypalOrderId?: string;
   paypalCaptureId?: string;
   createdAt: string;
@@ -46,7 +48,7 @@ export interface Store {
   createOrder(o: Omit<Order, 'id' | 'status' | 'createdAt'>): Promise<Order>;
   getOrder(id: string): Promise<Order | undefined>;
   getOrderByPayPalId(paypalOrderId: string): Promise<Order | undefined>;
-  updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId'>>): Promise<Order>;
+  updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress'>>): Promise<Order>;
   listOrders(): Promise<Order[]>;
   listQuotes(): Promise<Quote[]>;
   getQuote(id: string): Promise<Quote | undefined>;
@@ -114,7 +116,7 @@ class LocalFileStore implements Store {
     return (await this.read()).orders.find((o) => o.paypalOrderId === paypalOrderId);
   }
 
-  updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId'>>) {
+  updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress'>>) {
     return this.write((d) => {
       const order = d.orders.find((o) => o.id === id);
       if (!order) throw new Error('Order not found');
