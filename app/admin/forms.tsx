@@ -1,7 +1,7 @@
 'use client';
 
-import { startTransition, useActionState, type FormEvent } from 'react';
-import { PRODUCT_IMAGES, categories } from '@/lib/catalog';
+import { startTransition, useActionState, useState, type FormEvent } from 'react';
+import { PRODUCT_IMAGES, categories, imageSrc, isUploadedImage } from '@/lib/catalog';
 import type { StoredProduct } from '@/lib/server/store';
 import { deleteProductAction, importProductsAction, loginAction, saveProductAction, type FormState } from './actions';
 
@@ -46,12 +46,47 @@ function Text({ name, label, value, type = 'text', full, ...rest }: { name: stri
   );
 }
 
+// Shrinks in the browser so large phone photos fit the upload limit. Redrawing also drops
+// hidden data such as GPS location, and fills transparency with white for JPEG.
+async function shrinkPhoto(file: File, maxSide = 1600) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  if (!blob) throw new Error('Could not read the photo');
+  return new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+}
+
 export function ProductForm({ product }: { product?: StoredProduct }) {
+  const [preview, setPreview] = useState('');
+  const [photoError, setPhotoError] = useState('');
+  const [preparing, setPreparing] = useState(false);
+  const hasPhoto = Boolean(product && isUploadedImage(product.img));
   const [state, action, pending] = useActionState(saveProductAction.bind(null, product?.id), empty);
   // Submitted by hand because <form action> clears every field, even when validation fails.
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
+    const photo = data.get('photo');
+    setPhotoError('');
+    if (photo instanceof File && photo.size) {
+      setPreparing(true);
+      try {
+        data.set('photo', await shrinkPhoto(photo));
+      } catch {
+        setPhotoError('This photo could not be read. Use a JPG, PNG or WebP file.');
+        return;
+      } finally {
+        setPreparing(false);
+      }
+    }
     startTransition(() => action(data));
   };
   return (
@@ -71,10 +106,35 @@ export function ProductForm({ product }: { product?: StoredProduct }) {
             </select>
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="img">Image *</label>
+            <label className="field-label" htmlFor="img">{hasPhoto ? 'Image *' : 'Sample image, if there is no photo *'}</label>
             <select className="select-input" id="img" name="img" defaultValue={product?.img} required>
+              {hasPhoto ? <option value={product!.img}>Current photo</option> : null}
               {PRODUCT_IMAGES.map((i) => <option key={i}>{i}</option>)}
             </select>
+          </div>
+          <div className="field full-width">
+            <label className="field-label" htmlFor="photo">Product photo</label>
+            {preview || product ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a local preview or the admin's own photo, not worth optimizing
+              <img className="admin-photo" src={preview || imageSrc(product!.img)} alt="" />
+            ) : null}
+            <input
+              className="text-input"
+              id="photo"
+              name="photo"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                setPhotoError('');
+                setPreview((old) => {
+                  if (old) URL.revokeObjectURL(old);
+                  return file ? URL.createObjectURL(file) : '';
+                });
+              }}
+            />
+            <small className="muted">JPG, PNG or WebP. Use only photos you have the right to publish. A new photo replaces the current one when you save.</small>
+            {photoError ? <p className="admin-error" role="alert">{photoError}</p> : null}
           </div>
           <div className="field full-width">
             <label className="field-label" htmlFor="desc">Description in English</label>
@@ -121,7 +181,7 @@ export function ProductForm({ product }: { product?: StoredProduct }) {
           <Text name="heightIn" label="Height (in)" type="number" step="0.01" min="0" value={product?.heightIn} />
         </div>
       </div>
-      <div className="admin-actions"><button className="btn" disabled={pending}>Save product</button></div>
+      <div className="admin-actions"><button className="btn" disabled={pending || preparing}>Save product</button></div>
     </form>
   );
 }

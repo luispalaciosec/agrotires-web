@@ -17,12 +17,20 @@ const aliases: [string, string][] = [
   ['/register', '/account'],
 ];
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
 const config: NextConfig = {
   poweredByHeader: false,
+  // Just under Vercel's 4.5 MB request limit.
+  experimental: { serverActions: { bodySizeLimit: '4mb' } },
   // A stray lockfile in the home folder must not be mistaken for the project root.
   outputFileTracingRoot: __dirname,
   turbopack: { root: __dirname },
-  images: { formats: ['image/avif', 'image/webp'], minimumCacheTTL: 2678400 },
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 2678400,
+    remotePatterns: supabaseUrl ? [{ protocol: 'https', hostname: new URL(supabaseUrl).hostname, pathname: '/storage/v1/object/public/product-photos/**' }] : [],
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
@@ -43,7 +51,8 @@ const config: NextConfig = {
       beforeFiles: [],
       afterFiles: [
         { source: '/', destination: '/en' },
-        { source: '/:path((?!es(?:/|$)).*)', destination: '/en/:path' },
+        // Rewrites run before dynamic routes, so /admin and /api must be left out or their [id] pages answer 404.
+        { source: '/:path((?!es(?:/|$)|admin(?:/|$)|api(?:/|$)).*)', destination: '/en/:path' },
       ],
       fallback: [],
     };

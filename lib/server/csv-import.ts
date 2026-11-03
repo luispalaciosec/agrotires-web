@@ -58,7 +58,7 @@ export function importProducts(text: string, catalog: StoredProduct[]): ImportRe
       descEs: get('description_es') || existing?.descEs || '',
       price: get('price_usd'),
       stockQty: get('stock_qty'),
-      img: get('image_filename'),
+      img: get('image_filename') || existing?.img || '',
       tags: existing?.tags.join(', ') ?? '',
       tireSize: get('tire_size'),
       equipmentMake: get('equipment_make'),

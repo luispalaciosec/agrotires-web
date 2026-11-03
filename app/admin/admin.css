@@ -37,3 +37,4 @@
 .admin-login .form-card{width:min(400px,100%)}
 .admin-pre{white-space:pre-wrap;font-size:13px;margin:0;color:var(--ink)}
 @media(max-width:800px){.admin{grid-template-columns:1fr}.admin-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;padding:12px}.admin-brand{width:100%;padding-bottom:6px}.admin-side a,.admin-side button{width:auto;padding:8px 10px}.admin-side form{margin:0}.admin-main{padding:18px}}
+.admin-photo{display:block;width:160px;height:120px;object-fit:cover;border-radius:10px;margin-bottom:10px;background:#f4f5f1}

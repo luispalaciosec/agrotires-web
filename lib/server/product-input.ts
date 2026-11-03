@@ -24,7 +24,7 @@ const schema = z.object({
   descEs: optionalText(5000),
   price: optionalNumber,
   stockQty: optionalNumber,
-  img: z.string().refine((v) => PRODUCT_IMAGES.includes(v), 'Choose an available image'),
+  img: z.string().min(1, 'Choose an available image'),
   tags: z.string().max(300),
   tireSize: optionalText(80),
   equipmentMake: optionalText(120),
@@ -55,6 +55,9 @@ export function parseProduct(input: ProductInput, catalog: StoredProduct[], id?:
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const v = parsed.data;
+  // The form can only keep the photo this product already has; new photos arrive through uploadImage.
+  const ownPhoto = id !== undefined && catalog.find((p) => p.id === id)?.img === v.img;
+  if (!PRODUCT_IMAGES.includes(v.img) && !ownPhoto) return { ok: false, error: 'Choose an available image' };
   const duplicate = catalog.find((p) => p.sku.toLowerCase() === v.sku.toLowerCase() && p.id !== id);
   if (duplicate) return { ok: false, error: `SKU ${v.sku} is already used by ${duplicate.name}` };
   return {

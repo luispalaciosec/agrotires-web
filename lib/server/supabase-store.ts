@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Locale } from '../i18n';
+import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
 import type { ShippingAddress, Order, OrderItem, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
+const PHOTO_BUCKET = 'product-photos';
 const PAGE = 1000;
 
 export const supabaseConfigured = () => Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
@@ -238,6 +241,21 @@ export class SupabaseStore implements Store {
     unwrap(await this.db.rpc('reduce_stock', { items: items.map((i) => ({ slug: i.productId, quantity: i.quantity })) }));
   }
 
+  async uploadImage(bytes: Uint8Array, type: PhotoType) {
+    const bucket = this.db.storage.from(PHOTO_BUCKET);
+    const name = `${randomUUID()}.${PHOTO_EXTENSIONS[type]}`;
+    const { error } = await bucket.upload(name, bytes, { contentType: type, cacheControl: '31536000' });
+    if (error) throw new Error(error.message);
+    return bucket.getPublicUrl(name).data.publicUrl;
+  }
+
+  async deleteImage(img: string) {
+    const prefix = this.db.storage.from(PHOTO_BUCKET).getPublicUrl('').data.publicUrl;
+    if (!img.startsWith(prefix)) return;
+    const { error } = await this.db.storage.from(PHOTO_BUCKET).remove([img.slice(prefix.length)]);
+    if (error) throw new Error(error.message);
+  }
+
   // For /api/health: confirms the connection and migrations without exposing data.
   async check() {
     const categories = await this.db.from('categories').select('id', { count: 'exact', head: true });
@@ -245,6 +263,7 @@ export class SupabaseStore implements Store {
     const tags = await this.db.from('products').select('tags', { head: true });
     const stock = await this.db.rpc('reduce_stock', { items: [] });
     const languages = await this.db.from('products').select('name_es', { head: true });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error };
+    const photos = await this.db.storage.getBucket(PHOTO_BUCKET);
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error };
   }
 }

@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
-import { catHref, type Category, type Guide } from '@/lib/catalog';
+import { catHref, imageSrc, type Category, type Guide } from '@/lib/catalog';
 import { localePath, type Locale } from '@/lib/i18n';
 import { messages } from '@/lib/messages';
 
@@ -54,9 +54,12 @@ const ASSET_SIZES: Record<string, [number, number]> = {
   'farm-hero.svg': [1480, 900],
 };
 
+// Uploaded photos come in any shape; the card styles crop them.
+const UPLOADED_SIZE = [1600, 1200];
+
 export function Asset({ name, alt, sizes, className, preload }: { name: string; alt: string; sizes: string; className?: string; preload?: boolean }) {
-  const [width, height] = ASSET_SIZES[name];
-  return <Image src={`/assets/${name}`} alt={alt} width={width} height={height} sizes={sizes} className={className} preload={preload} unoptimized={name.endsWith('.svg')} />;
+  const [width, height] = ASSET_SIZES[name] ?? UPLOADED_SIZE;
+  return <Image src={imageSrc(name)} alt={alt} width={width} height={height} sizes={sizes} className={className} preload={preload} unoptimized={name.endsWith('.svg')} />;
 }
 
 export function PageHead({ locale, title, desc, crumbs }: { locale: Locale; title: ReactNode; desc: ReactNode; crumbs?: string }) {

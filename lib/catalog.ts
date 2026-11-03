@@ -97,6 +97,10 @@ export function localizeProduct<T extends { name: string; desc: string; nameEs?:
 }
 
 // Until photo upload exists, products pick from the images already in /public/assets.
+// Bundled images are stored by file name, photos uploaded from the panel by their address.
+export const isUploadedImage = (img: string) => /^(https:\/\/|\/uploads\/)/.test(img);
+export const imageSrc = (img: string) => (isUploadedImage(img) ? img : `/assets/${img}`);
+
 export const PRODUCT_IMAGES = ['agro-tires.webp', 'agro-hydraulics.webp', 'agro-fieldwork.webp', 'agro-maintenance.webp', 'agro-precision.webp', 'agro-harvest.webp', 'agro-drive-belt.webp', 'agro-toolkit.webp', 'agro-gauge-wheel.webp'];
 export const money = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
 export const catHref = (id: string) => '/shop?category=' + encodeURIComponent(id);

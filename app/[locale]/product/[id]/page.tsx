@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DetailActions, ProductCard } from '@/components/product';
 import { Asset, Icon, JsonLd } from '@/components/ui';
-import { DEMO_CATALOG, catHref, getCategory, money, productHref } from '@/lib/catalog';
+import { DEMO_CATALOG, catHref, getCategory, imageSrc, money, productHref } from '@/lib/catalog';
 import { LOCALE_TAGS, isLocale, localePath, type Locale } from '@/lib/i18n';
 import { resolveLocale } from '@/lib/locale-params';
 import { getPublicProducts } from '@/lib/products';
@@ -46,7 +46,7 @@ export default async function ProductPage({ params }: Props) {
           sku: p.sku,
           description: p.desc,
           inLanguage: LOCALE_TAGS[locale],
-          image: absolute(`/assets/${p.img}`),
+          image: p.img.startsWith('https:') ? p.img : absolute(imageSrc(p.img)),
           offers: { '@type': 'Offer', price: p.price, priceCurrency: 'USD', url: absolute(href(productHref(p.id))) },
         }} />
       )}

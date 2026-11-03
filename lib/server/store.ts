@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { products as demoProducts, type Product } from '../catalog';
 import type { Locale } from '../i18n';
+import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
 import { SupabaseStore, supabaseConfigured } from './supabase-store';
 
 // Shapes mirror supabase/migrations/0001_store.sql so the database can replace the local driver.
@@ -56,6 +57,8 @@ export interface Store {
   listProducts(): Promise<StoredProduct[]>;
   saveProducts(list: StoredProduct[]): Promise<void>;
   deleteProduct(id: string): Promise<void>;
+  uploadImage(bytes: Uint8Array, type: PhotoType): Promise<string>;
+  deleteImage(img: string): Promise<void>;
   reduceStock(items: OrderItem[]): Promise<void>;
 }
 
@@ -164,6 +167,18 @@ class LocalFileStore implements Store {
     return this.write((d) => {
       d.products = d.products.filter((p) => p.id !== id);
     });
+  }
+
+  async uploadImage(bytes: Uint8Array, type: PhotoType) {
+    const name = `${randomUUID()}.${PHOTO_EXTENSIONS[type]}`;
+    const dir = path.join(process.cwd(), 'public', 'uploads');
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, name), bytes);
+    return `/uploads/${name}`;
+  }
+
+  async deleteImage(img: string) {
+    if (img.startsWith('/uploads/')) await rm(path.join(process.cwd(), 'public', 'uploads', path.basename(img)), { force: true });
   }
 
   reduceStock(items: OrderItem[]) {

@@ -3,11 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { isUploadedImage } from '@/lib/catalog';
 import { adminConfigured, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
 import { importProducts } from '@/lib/server/csv-import';
 import { rateLimited } from '@/lib/server/http';
+import { checkPhoto } from '@/lib/server/photo-upload';
 import { parseProduct, type ProductInput } from '@/lib/server/product-input';
-import { getStore, type OrderStatus, type QuoteStatus, type ShippingClass } from '@/lib/server/store';
+import { getStore, type OrderStatus, type QuoteStatus, type ShippingClass, type Store } from '@/lib/server/store';
 
 export type FormState = { error?: string; errors?: string[]; notice?: string };
 
@@ -18,6 +20,15 @@ const requireStore = () => {
 };
 // Storefront pages stay static and fast; this rebuilds them after an edit.
 const refreshStorefront = () => revalidatePath('/', 'layout');
+
+// A leftover file costs little, so a failed cleanup never blocks the edit that triggered it.
+async function removePhoto(store: Store, img: string) {
+  try {
+    if (isUploadedImage(img)) await store.deleteImage(img);
+  } catch (e) {
+    console.error('Could not remove old photo', e);
+  }
+}
 
 export async function loginAction(_: FormState, form: FormData): Promise<FormState> {
   if (!adminConfigured()) return { error: 'The admin panel is not configured yet.' };
@@ -47,14 +58,32 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
   };
   const result = parseProduct(input, await store.listProducts(), id);
   if (!result.ok) return { error: result.error };
+  const previous = id ? (await store.listProducts()).find((p) => p.id === id)?.img : undefined;
+  const photo = form.get('photo');
+  if (photo instanceof File && photo.size) {
+    const bytes = new Uint8Array(await photo.arrayBuffer());
+    const check = checkPhoto(bytes);
+    if (!check.ok) return { error: check.error };
+    try {
+      result.product.img = await store.uploadImage(bytes, check.type);
+    } catch (e) {
+      console.error('Photo upload failed', e);
+      return { error: 'The photo could not be saved. Nothing was changed; please try again.' };
+    }
+  }
   await store.saveProducts([result.product]);
+  // After the save, so a failure can never leave a product pointing at a deleted photo.
+  if (previous && previous !== result.product.img) await removePhoto(store, previous);
   refreshStorefront();
   redirect('/admin/products');
 }
 
 export async function deleteProductAction(id: string) {
   await requireAdmin();
-  await requireStore().deleteProduct(id);
+  const store = requireStore();
+  const img = (await store.listProducts()).find((p) => p.id === id)?.img;
+  await store.deleteProduct(id);
+  if (img) await removePhoto(store, img);
   refreshStorefront();
   redirect('/admin/products');
 }
