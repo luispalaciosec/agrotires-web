@@ -13,7 +13,7 @@ export default async function CustomersPage() {
       <div className="admin-head">
         <div>
           <h1>Customers</h1>
-          <p className="admin-sub">Built from paid orders, since the store has no customer accounts yet.</p>
+          <p className="admin-sub">Business applications and everyone who has bought, with or without an account.</p>
         </div>
       </div>
       <div className="admin-card">
