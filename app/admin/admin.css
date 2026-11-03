@@ -38,3 +38,4 @@
 .admin-pre{white-space:pre-wrap;font-size:13px;margin:0;color:var(--ink)}
 @media(max-width:800px){.admin{grid-template-columns:1fr}.admin-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;padding:12px}.admin-brand{width:100%;padding-bottom:6px}.admin-side a,.admin-side button{width:auto;padding:8px 10px}.admin-side form{margin:0}.admin-main{padding:18px}}
 .admin-photo{display:block;width:160px;height:120px;object-fit:cover;border-radius:10px;margin-bottom:10px;background:#f4f5f1}
+.admin-photos{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:12px}.admin-photo-item{display:flex;flex-direction:column;align-items:flex-start;gap:5px;font-size:12px}.admin-photo-item .admin-photo{margin-bottom:0;object-fit:contain}

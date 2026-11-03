@@ -64,6 +64,7 @@ export function parseProduct(input: ProductInput, catalog: StoredProduct[], id?:
     ok: true,
     product: {
       ...v,
+      gallery: id !== undefined ? catalog.find((p) => p.id === id)?.gallery : undefined,
       id: id ?? uniqueId(v.name, new Set(catalog.map((p) => p.id))),
       price: v.price ?? null,
       stockQty: v.stockQty ?? null,

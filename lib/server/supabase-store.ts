@@ -51,6 +51,7 @@ export function productFromRow(r: ProductRow): StoredProduct {
     descEs: r.description_es ?? undefined,
     price: r.price_cents === null ? null : r.price_cents / 100,
     img: images[0]?.path ?? FALLBACK_IMAGE,
+    gallery: images.length > 1 ? images.slice(1).map((i) => i.path) : undefined,
     tags: r.tags,
     brand: r.brand ?? undefined,
     tireSize: r.tire_size ?? undefined,
@@ -230,7 +231,7 @@ export class SupabaseStore implements Store {
       .upsert(list.map((p) => ({ ...productToRow(p), updated_at: new Date().toISOString() })), { onConflict: 'slug' }).select('id, slug'));
     const ids = saved.map((s) => s.id);
     unwrap(await this.db.from('product_images').delete().in('product_id', ids));
-    unwrap(await this.db.from('product_images').insert(list.map((p) => ({ product_id: saved.find((s) => s.slug === p.id)!.id, path: p.img, alt: p.name, sort_order: 0 }))));
+    unwrap(await this.db.from('product_images').insert(list.flatMap((p) => [p.img, ...(p.gallery ?? [])].map((path, i) => ({ product_id: saved.find((s) => s.slug === p.id)!.id, path, alt: p.name, sort_order: i })))));
   }
 
   async deleteProduct(id: string) {

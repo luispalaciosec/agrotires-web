@@ -3,11 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { isUploadedImage } from '@/lib/catalog';
+import { isUploadedImage, productImages } from '@/lib/catalog';
 import { adminConfigured, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
 import { importProducts } from '@/lib/server/csv-import';
 import { rateLimited } from '@/lib/server/http';
-import { checkPhoto } from '@/lib/server/photo-upload';
+import { checkPhoto, keptPhotos } from '@/lib/server/photo-upload';
 import { parseProduct, type ProductInput } from '@/lib/server/product-input';
 import { getStore, type OrderStatus, type QuoteStatus, type ShippingClass, type Store } from '@/lib/server/store';
 
@@ -58,22 +58,33 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
   };
   const result = parseProduct(input, await store.listProducts(), id);
   if (!result.ok) return { error: result.error };
-  const previous = id ? (await store.listProducts()).find((p) => p.id === id)?.img : undefined;
-  const photo = form.get('photo');
-  if (photo instanceof File && photo.size) {
-    const bytes = new Uint8Array(await photo.arrayBuffer());
+  const current = id ? (await store.listProducts()).find((p) => p.id === id) : undefined;
+  const owned = current ? productImages(current).filter(isUploadedImage) : [];
+  const files = form.getAll('photos').filter((f): f is File => f instanceof File && f.size > 0);
+  const kept = keptPhotos(text('keep'), owned, files.length);
+  if (!kept.ok) return { error: kept.error };
+  // Every file is checked before any is stored, so a bad one leaves nothing behind.
+  const uploads = [];
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const check = checkPhoto(bytes);
     if (!check.ok) return { error: check.error };
-    try {
-      result.product.img = await store.uploadImage(bytes, check.type);
-    } catch (e) {
-      console.error('Photo upload failed', e);
-      return { error: 'The photo could not be saved. Nothing was changed; please try again.' };
-    }
+    uploads.push({ bytes, type: check.type });
   }
+  const added: string[] = [];
+  try {
+    for (const { bytes, type } of uploads) added.push(await store.uploadImage(bytes, type));
+  } catch (e) {
+    console.error('Photo upload failed', e);
+    await Promise.all(added.map((img) => removePhoto(store, img)));
+    return { error: 'The photos could not be saved. Nothing was changed; please try again.' };
+  }
+  const photos = [...kept.keep, ...added];
+  if (photos.length) result.product.img = photos[0];
+  result.product.gallery = photos.slice(1);
   await store.saveProducts([result.product]);
   // After the save, so a failure can never leave a product pointing at a deleted photo.
-  if (previous && previous !== result.product.img) await removePhoto(store, previous);
+  await Promise.all(owned.filter((img) => !photos.includes(img)).map((img) => removePhoto(store, img)));
   refreshStorefront();
   redirect('/admin/products');
 }
@@ -81,9 +92,9 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
 export async function deleteProductAction(id: string) {
   await requireAdmin();
   const store = requireStore();
-  const img = (await store.listProducts()).find((p) => p.id === id)?.img;
+  const product = (await store.listProducts()).find((p) => p.id === id);
   await store.deleteProduct(id);
-  if (img) await removePhoto(store, img);
+  if (product) await Promise.all(productImages(product).map((img) => removePhoto(store, img)));
   refreshStorefront();
   redirect('/admin/products');
 }

@@ -13,7 +13,7 @@ export const DEMO_CATALOG = true;
 
 export type Category = { id: string; name: string; short: string; desc: string; img: string; tag: string };
 // name and desc are already in the page's language; alt is the name in the other one, for search.
-export type Product = { id: string; cat: string; name: string; sku: string; price: number; img: string; tags: string[]; desc: string; brand?: string; tireSize?: string; equipmentMake?: string; equipmentModel?: string; alt?: string };
+export type Product = { id: string; cat: string; name: string; sku: string; price: number; img: string; gallery?: string[]; tags: string[]; desc: string; brand?: string; tireSize?: string; equipmentMake?: string; equipmentModel?: string; alt?: string };
 export type DemoProduct = Omit<Product, 'alt'> & { nameEs: string; descEs: string };
 export type Guide = { id: string; title: string; icon: string; subtitle: string; body: string };
 
@@ -100,6 +100,7 @@ export function localizeProduct<T extends { name: string; desc: string; nameEs?:
 // Bundled images are stored by file name, photos uploaded from the panel by their address.
 export const isUploadedImage = (img: string) => /^(https:\/\/|\/uploads\/)/.test(img);
 export const imageSrc = (img: string) => (isUploadedImage(img) ? img : `/assets/${img}`);
+export const productImages = (p: { img: string; gallery?: string[] }) => [p.img, ...(p.gallery ?? [])];
 
 export const PRODUCT_IMAGES = ['agro-tires.webp', 'agro-hydraulics.webp', 'agro-fieldwork.webp', 'agro-maintenance.webp', 'agro-precision.webp', 'agro-harvest.webp', 'agro-drive-belt.webp', 'agro-toolkit.webp', 'agro-gauge-wheel.webp'];
 export const money = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);

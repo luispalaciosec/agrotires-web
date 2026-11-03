@@ -1,7 +1,7 @@
 'use client';
 
 import { startTransition, useActionState, useState, type FormEvent } from 'react';
-import { PRODUCT_IMAGES, categories, imageSrc, isUploadedImage } from '@/lib/catalog';
+import { PRODUCT_IMAGES, categories, imageSrc, isUploadedImage, productImages } from '@/lib/catalog';
 import type { StoredProduct } from '@/lib/server/store';
 import { deleteProductAction, importProductsAction, loginAction, saveProductAction, type FormState } from './actions';
 
@@ -46,6 +46,10 @@ function Text({ name, label, value, type = 'text', full, ...rest }: { name: stri
   );
 }
 
+const MAX_NEW_PHOTOS = 8;
+// Together the photos must fit under the 4 MB limit of a single save.
+const MAX_UPLOAD_BYTES = 3_800_000;
+
 // Shrinks in the browser so large phone photos fit the upload limit. Redrawing also drops
 // hidden data such as GPS location, and fills transparency with white for JPEG.
 async function shrinkPhoto(file: File, maxSide = 1600) {
@@ -65,23 +69,33 @@ async function shrinkPhoto(file: File, maxSide = 1600) {
 }
 
 export function ProductForm({ product }: { product?: StoredProduct }) {
-  const [preview, setPreview] = useState('');
+  const [kept, setKept] = useState<string[]>(() => (product ? productImages(product).filter(isUploadedImage) : []));
+  const [previews, setPreviews] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState('');
   const [preparing, setPreparing] = useState(false);
-  const hasPhoto = Boolean(product && isUploadedImage(product.img));
   const [state, action, pending] = useActionState(saveProductAction.bind(null, product?.id), empty);
   // Submitted by hand because <form action> clears every field, even when validation fails.
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
-    const photo = data.get('photo');
+    const files = data.getAll('photos').filter((f): f is File => f instanceof File && f.size > 0);
+    data.delete('photos');
     setPhotoError('');
-    if (photo instanceof File && photo.size) {
+    if (kept.length + files.length > MAX_NEW_PHOTOS) {
+      setPhotoError(`A product can have up to ${MAX_NEW_PHOTOS} photos.`);
+      return;
+    }
+    if (files.length) {
       setPreparing(true);
       try {
-        data.set('photo', await shrinkPhoto(photo));
+        const shrunk = await Promise.all(files.map((file) => shrinkPhoto(file)));
+        if (shrunk.reduce((n, f) => n + f.size, 0) > MAX_UPLOAD_BYTES) {
+          setPhotoError('These photos are too large to send together. Upload fewer at a time.');
+          return;
+        }
+        shrunk.forEach((f) => data.append('photos', f));
       } catch {
-        setPhotoError('This photo could not be read. Use a JPG, PNG or WebP file.');
+        setPhotoError('One of these photos could not be read. Use JPG, PNG or WebP files.');
         return;
       } finally {
         setPreparing(false);
@@ -106,34 +120,50 @@ export function ProductForm({ product }: { product?: StoredProduct }) {
             </select>
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="img">{hasPhoto ? 'Image *' : 'Sample image, if there is no photo *'}</label>
-            <select className="select-input" id="img" name="img" defaultValue={product?.img} required>
-              {hasPhoto ? <option value={product!.img}>Current photo</option> : null}
+            <label className="field-label" htmlFor="img">Sample image, if there are no photos *</label>
+            <select className="select-input" id="img" name="img" defaultValue={product && !isUploadedImage(product.img) ? product.img : undefined} required>
               {PRODUCT_IMAGES.map((i) => <option key={i}>{i}</option>)}
             </select>
           </div>
           <div className="field full-width">
-            <label className="field-label" htmlFor="photo">Product photo</label>
-            {preview || product ? (
-              // eslint-disable-next-line @next/next/no-img-element -- a local preview or the admin's own photo, not worth optimizing
-              <img className="admin-photo" src={preview || imageSrc(product!.img)} alt="" />
+            <label className="field-label" htmlFor="photos">Product photos</label>
+            <input type="hidden" name="keep" value={JSON.stringify(kept)} />
+            {kept.length || previews.length ? (
+              <div className="admin-photos">
+                {kept.map((img, i) => (
+                  <div className="admin-photo-item" key={img}>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- the admin's own photo, not worth optimizing */}
+                    <img className="admin-photo" src={imageSrc(img)} alt={`Photo ${i + 1}`} />
+                    {i === 0 ? <span className="admin-pill">Main</span> : <button className="text-link" type="button" onClick={() => setKept([img, ...kept.filter((x) => x !== img)])}>Make main</button>}
+                    <button className="text-link" type="button" onClick={() => setKept(kept.filter((x) => x !== img))}>Remove</button>
+                  </div>
+                ))}
+                {previews.map((url) => (
+                  <div className="admin-photo-item" key={url}>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a local preview */}
+                    <img className="admin-photo" src={url} alt="New photo" />
+                    <span className="admin-pill warn">New</span>
+                  </div>
+                ))}
+              </div>
             ) : null}
             <input
               className="text-input"
-              id="photo"
-              name="photo"
+              id="photos"
+              name="photos"
               type="file"
+              multiple
               accept="image/jpeg,image/png,image/webp"
               onChange={(e) => {
-                const file = e.target.files?.[0];
+                const files = [...(e.target.files ?? [])];
                 setPhotoError('');
-                setPreview((old) => {
-                  if (old) URL.revokeObjectURL(old);
-                  return file ? URL.createObjectURL(file) : '';
+                setPreviews((old) => {
+                  old.forEach((url) => URL.revokeObjectURL(url));
+                  return files.map((file) => URL.createObjectURL(file));
                 });
               }}
             />
-            <small className="muted">JPG, PNG or WebP. Use only photos you have the right to publish. A new photo replaces the current one when you save.</small>
+            <small className="muted">Up to {MAX_NEW_PHOTOS} photos in JPG, PNG or WebP. New photos are added after the current ones when you save. Use only photos you have the right to publish.</small>
             {photoError ? <p className="admin-error" role="alert">{photoError}</p> : null}
           </div>
           <div className="field full-width">

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { imageSrc, isUploadedImage } from '@/lib/catalog';
+import { imageSrc, isUploadedImage, productImages } from '@/lib/catalog';
 import { importProducts } from '@/lib/server/csv-import';
-import { checkPhoto, MAX_PHOTO_BYTES } from '@/lib/server/photo-upload';
+import { checkPhoto, keptPhotos, MAX_PHOTO_BYTES } from '@/lib/server/photo-upload';
 import { parseProduct, type ProductInput } from '@/lib/server/product-input';
 import type { StoredProduct } from '@/lib/server/store';
+import { productFromRow, type ProductRow } from '@/lib/server/supabase-store';
 
 const bytes = (...start: number[]) => new Uint8Array([...start, ...new Array(20).fill(0)]);
 const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
@@ -60,5 +61,34 @@ describe('language rewrite', () => {
     const pattern = new RegExp(`^/${source.slice('/:path('.length, -1)}$`);
     for (const path of ['/admin/products/tire', '/admin/orders/1', '/admin/quotes/1', '/admin', '/api/health', '/es/shop']) expect(pattern.test(path), path).toBe(false);
     for (const path of ['/shop', '/product/tire', '/administrator', '/espresso']) expect(pattern.test(path), path).toBe(true);
+  });
+});
+
+describe('several photos', () => {
+  const A = 'https://x.supabase.co/storage/v1/object/public/product-photos/a.jpg';
+  const B = 'https://x.supabase.co/storage/v1/object/public/product-photos/b.jpg';
+
+  it('keeps only photos the product owns, in the chosen order', () => {
+    expect(keptPhotos(JSON.stringify([B, A]), [A, B], 0)).toEqual({ ok: true, keep: [B, A] });
+    expect(keptPhotos(JSON.stringify([A, A]), [A, B], 0)).toEqual({ ok: true, keep: [A] });
+    expect(keptPhotos('', [A], 0)).toEqual({ ok: true, keep: [] });
+    expect(keptPhotos(JSON.stringify(['https://evil.test/x.jpg']), [A], 0).ok).toBe(false);
+    expect(keptPhotos('{"a":1}', [A], 0).ok).toBe(false);
+    expect(keptPhotos('not json', [A], 0).ok).toBe(false);
+  });
+
+  it('limits a product to eight photos', () => {
+    expect(keptPhotos(JSON.stringify([A, B]), [A, B], 6).ok).toBe(true);
+    expect(keptPhotos(JSON.stringify([A, B]), [A, B], 7)).toEqual({ ok: false, error: 'A product can have up to 8 photos.' });
+  });
+
+  it('reads and writes them in order, and edits keep the extra photos', () => {
+    const r = parseProduct({ ...input, img: PHOTO }, [{ ...saved, gallery: [B] }], 'tire');
+    expect(r.ok && r.product.gallery).toEqual([B]);
+    expect(productImages({ img: A, gallery: [B] })).toEqual([A, B]);
+    expect(productImages({ img: A })).toEqual([A]);
+    const row = productFromRow({ slug: 's', category_id: 'tires', name: 'n', name_es: null, sku: 'k', description: '', description_es: null, price_cents: 100, tags: [], brand: null, tire_size: null, equipment_make: null, equipment_model: null, stock_qty: 1, active: true, shipping_class: 'parcel', compatibility_verified: false, weight_lb: null, length_in: null, width_in: null, height_in: null, product_images: [{ path: B, sort_order: 1 }, { path: A, sort_order: 0 }] } as unknown as ProductRow);
+    expect(row.img).toBe(A);
+    expect(row.gallery).toEqual([B]);
   });
 });

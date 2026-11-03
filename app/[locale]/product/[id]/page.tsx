@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DetailActions, ProductCard } from '@/components/product';
-import { Asset, Icon, JsonLd } from '@/components/ui';
-import { DEMO_CATALOG, catHref, getCategory, imageSrc, money, productHref } from '@/lib/catalog';
+import { Icon, JsonLd } from '@/components/ui';
+import { ProductGallery } from '@/components/product-gallery';
+import { DEMO_CATALOG, catHref, getCategory, imageSrc, money, productHref, productImages } from '@/lib/catalog';
 import { LOCALE_TAGS, isLocale, localePath, type Locale } from '@/lib/i18n';
 import { resolveLocale } from '@/lib/locale-params';
 import { getPublicProducts } from '@/lib/products';
@@ -46,7 +47,7 @@ export default async function ProductPage({ params }: Props) {
           sku: p.sku,
           description: p.desc,
           inLanguage: LOCALE_TAGS[locale],
-          image: p.img.startsWith('https:') ? p.img : absolute(imageSrc(p.img)),
+          image: productImages(p).map((img) => (img.startsWith('https:') ? img : absolute(imageSrc(img)))),
           offers: { '@type': 'Offer', price: p.price, priceCurrency: 'USD', url: absolute(href(productHref(p.id))) },
         }} />
       )}
@@ -55,9 +56,8 @@ export default async function ProductPage({ params }: Props) {
           <Link href={href('/')}>{t.common.home}</Link><Icon name="right" size="xs" /><Link href={href(catHref(p.cat))}>{c.name}</Link><Icon name="right" size="xs" />{p.name}
         </div>
         <div className="detail-layout">
-          <div className="detail-image photo-detail">
-            <span className="sample-tag">{m.demoImage}</span>
-            <Asset name={p.img} alt={m.detailAlt(p.name)} sizes="(max-width: 720px) 100vw, 640px" preload />
+          <div>
+            <ProductGallery key={p.id} images={productImages(p)} alt={m.detailAlt(p.name)} tag={m.demoImage} />
           </div>
           <div className="detail-copy">
             <div className="eyebrow">{c.name}</div>
