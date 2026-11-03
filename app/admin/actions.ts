@@ -37,7 +37,7 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
   const store = requireStore();
   const text = (name: string) => String(form.get(name) || '');
   const input: ProductInput = {
-    sku: text('sku'), name: text('name'), cat: text('cat'), brand: text('brand'), desc: text('desc'),
+    sku: text('sku'), name: text('name'), nameEs: text('nameEs'), cat: text('cat'), brand: text('brand'), desc: text('desc'), descEs: text('descEs'),
     price: text('price'), stockQty: text('stockQty'), img: text('img'), tags: text('tags'),
     tireSize: text('tireSize'), equipmentMake: text('equipmentMake'), equipmentModel: text('equipmentModel'),
     shippingClass: text('shippingClass') as ShippingClass,

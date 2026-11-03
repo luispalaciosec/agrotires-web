@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { products as demoProducts } from '@/lib/catalog';
+import { localizeProduct, products as demoProducts } from '@/lib/catalog';
 import { getPublicProducts } from '@/lib/products';
 import type { StoredProduct } from '@/lib/server/store';
 import { orderFromRow, productFromRow, productToRow, quoteFromRow, type ProductRow } from '@/lib/server/supabase-store';
 
 const product: StoredProduct = {
-  id: 'field-tire', cat: 'tires', name: 'Field Tire', sku: 'FT-1', desc: 'Desc', price: 19.99, img: 'agro-toolkit.webp', tags: ['Tractor'],
+  id: 'field-tire', cat: 'tires', name: 'Field Tire', nameEs: 'Llanta de campo', sku: 'FT-1', desc: 'Desc', descEs: 'Descripción', price: 19.99, img: 'agro-toolkit.webp', tags: ['Tractor'],
   brand: 'Acme', tireSize: '18.4-38', stockQty: 4, active: true, shippingClass: 'freight_quote', compatibilityVerified: true, weightLb: 12.5,
 };
 
 describe('database mapping', () => {
   it('round-trips a product without losing fields', () => {
     const row = productToRow(product);
-    expect(row).toMatchObject({ slug: 'field-tire', category_id: 'tires', price_cents: 1999, stock_qty: 4, tire_size: '18.4-38', weight_lb: 12.5 });
+    expect(row).toMatchObject({ name_es: 'Llanta de campo', description_es: 'Descripción', slug: 'field-tire', category_id: 'tires', price_cents: 1999, stock_qty: 4, tire_size: '18.4-38', weight_lb: 12.5 });
     expect(productFromRow({ ...row, product_images: [{ path: 'agro-toolkit.webp', sort_order: 0 }] })).toEqual({
       ...product, equipmentMake: undefined, equipmentModel: undefined, lengthIn: undefined, widthIn: undefined, heightIn: undefined,
     });
@@ -32,10 +32,10 @@ describe('database mapping', () => {
   });
   it('maps orders and quotes', () => {
     expect(orderFromRow({
-      id: 'o', email: 'a@b.test', status: 'paid', subtotal_cents: 100, shipping_cents: 0, tax_cents: 0, total_cents: 100, paypal_order_id: 'P', paypal_capture_id: null, created_at: 'now',
+      id: 'o', email: 'a@b.test', status: 'paid', subtotal_cents: 100, shipping_cents: 0, tax_cents: 0, total_cents: 100, locale: 'es', paypal_order_id: 'P', paypal_capture_id: null, created_at: 'now',
       order_items: [{ sku: 'S', name: 'N', unit_price_cents: 100, quantity: 1, products: { slug: 'x' } }, { sku: 'T', name: 'Gone', unit_price_cents: 1, quantity: 1, products: null }],
     })).toMatchObject({ totalCents: 100, paypalOrderId: 'P', paypalCaptureId: undefined, items: [{ productId: 'x' }, { productId: '' }] });
-    expect(quoteFromRow({ id: 'q', name: 'A', email: 'a@b.test', phone: null, delivery_zip: '50301', topic: 'T', product_name: 'P', message: 'M', status: 'new', created_at: 'now' }))
+    expect(quoteFromRow({ id: 'q', name: 'A', email: 'a@b.test', phone: null, delivery_zip: '50301', topic: 'T', product_name: 'P', message: 'M', status: 'new', locale: 'en', created_at: 'now' }))
       .toMatchObject({ deliveryZip: '50301', product: 'P', phone: undefined });
   });
 });
@@ -47,6 +47,11 @@ describe('storefront catalog', () => {
     vi.restoreAllMocks();
   });
   it('shows the sample catalog when no storage is configured', async () => {
-    expect(await getPublicProducts()).toEqual(demoProducts);
+    expect(await getPublicProducts()).toEqual(demoProducts.map((p) => localizeProduct(p, 'en')));
+  });
+  it('uses Spanish when asked, and falls back to English when a translation is blank', async () => {
+    const [first] = await getPublicProducts('es');
+    expect(first).toMatchObject({ name: 'Llanta trasera de tractor — Demo R1', alt: 'Rear Tractor Tire — Demo R1' });
+    expect(localizeProduct({ name: 'Tire', desc: 'Text', nameEs: '', descEs: undefined }, 'es')).toMatchObject({ name: 'Tire', desc: 'Text' });
   });
 });

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { products as demoProducts, type Product } from '../catalog';
+import type { Locale } from '../i18n';
 import { SupabaseStore, supabaseConfigured } from './supabase-store';
 
 // Shapes mirror supabase/migrations/0001_store.sql so the database can replace the local driver.
@@ -17,15 +18,18 @@ export type Order = {
   taxCents: number;
   totalCents: number;
   currency: 'USD';
+  locale?: Locale;
   paypalOrderId?: string;
   paypalCaptureId?: string;
   createdAt: string;
 };
 export type QuoteStatus = 'new' | 'in_progress' | 'answered' | 'closed';
-export type Quote = { id: string; name: string; email: string; phone?: string; deliveryZip?: string; topic: string; product?: string; message: string; status: QuoteStatus; createdAt: string };
+export type Quote = { id: string; name: string; email: string; phone?: string; deliveryZip?: string; topic: string; product?: string; message: string; status: QuoteStatus; locale?: Locale; createdAt: string };
 export type ShippingClass = 'parcel' | 'freight_quote' | 'pickup';
 // price is null while a product is unpriced; stockQty is null when stock is not tracked.
-export type StoredProduct = Omit<Product, 'price'> & {
+export type StoredProduct = Omit<Product, 'price' | 'alt'> & {
+  nameEs?: string;
+  descEs?: string;
   price: number | null;
   stockQty: number | null;
   active: boolean;

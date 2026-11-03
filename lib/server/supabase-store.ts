@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Locale } from '../i18n';
 import type { Order, OrderItem, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,9 +13,11 @@ export type ProductRow = {
   slug: string;
   sku: string;
   name: string;
+  name_es: string | null;
   category_id: string;
   brand: string | null;
   description: string;
+  description_es: string | null;
   price_cents: number | null;
   stock_qty: number | null;
   weight_lb: number | string | null;
@@ -39,8 +42,10 @@ export function productFromRow(r: ProductRow): StoredProduct {
     id: r.slug,
     cat: r.category_id,
     name: r.name,
+    nameEs: r.name_es ?? undefined,
     sku: r.sku,
     desc: r.description,
+    descEs: r.description_es ?? undefined,
     price: r.price_cents === null ? null : r.price_cents / 100,
     img: images[0]?.path ?? FALLBACK_IMAGE,
     tags: r.tags,
@@ -64,9 +69,11 @@ export function productToRow(p: StoredProduct): ProductRow {
     slug: p.id,
     sku: p.sku,
     name: p.name,
+    name_es: p.nameEs ?? null,
     category_id: p.cat,
     brand: p.brand ?? null,
     description: p.desc,
+    description_es: p.descEs ?? null,
     price_cents: p.price === null ? null : Math.round(p.price * 100),
     stock_qty: p.stockQty,
     weight_lb: p.weightLb ?? null,
@@ -86,11 +93,11 @@ export function productToRow(p: StoredProduct): ProductRow {
 type ItemRow = { sku: string; name: string; unit_price_cents: number; quantity: number; products: { slug: string } | null };
 type OrderRow = {
   id: string; email: string; status: Order['status']; subtotal_cents: number; shipping_cents: number; tax_cents: number; total_cents: number;
-  paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
+  locale: Locale; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
 };
 type QuoteRow = {
   id: string; name: string; email: string; phone: string | null; delivery_zip: string | null; topic: string; product_name: string | null;
-  message: string; status: QuoteStatus; created_at: string;
+  message: string; status: QuoteStatus; locale: Locale; created_at: string;
 };
 
 export function orderFromRow(r: OrderRow): Order {
@@ -104,6 +111,7 @@ export function orderFromRow(r: OrderRow): Order {
     taxCents: r.tax_cents,
     totalCents: r.total_cents,
     currency: 'USD',
+    locale: r.locale,
     paypalOrderId: r.paypal_order_id ?? undefined,
     paypalCaptureId: r.paypal_capture_id ?? undefined,
     createdAt: r.created_at,
@@ -121,6 +129,7 @@ export function quoteFromRow(r: QuoteRow): Quote {
     product: r.product_name ?? undefined,
     message: r.message,
     status: r.status,
+    locale: r.locale,
     createdAt: r.created_at,
   };
 }
@@ -143,14 +152,14 @@ export class SupabaseStore implements Store {
 
   async saveQuote(q: Omit<Quote, 'id' | 'status' | 'createdAt'>) {
     const row = unwrap<QuoteRow>(await this.db.from('quote_requests').insert({
-      name: q.name, email: q.email, phone: q.phone || null, delivery_zip: q.deliveryZip || null, topic: q.topic, product_name: q.product || null, message: q.message,
+      name: q.name, email: q.email, phone: q.phone || null, delivery_zip: q.deliveryZip || null, topic: q.topic, product_name: q.product || null, message: q.message, locale: q.locale ?? 'en',
     }).select().single());
     return quoteFromRow(row);
   }
 
   async createOrder(o: Omit<Order, 'id' | 'status' | 'createdAt'>) {
     const order = unwrap<OrderRow>(await this.db.from('orders').insert({
-      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency,
+      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency, locale: o.locale ?? 'en',
     }).select().single());
     const ids = unwrap<{ id: string; slug: string }[]>(await this.db.from('products').select('id, slug').in('slug', o.items.map((i) => i.productId)));
     const { error } = await this.db.from('order_items').insert(o.items.map((i) => ({
@@ -233,6 +242,7 @@ export class SupabaseStore implements Store {
     if (categories.error) return { database: 'error' as const };
     const tags = await this.db.from('products').select('tags', { head: true });
     const stock = await this.db.rpc('reduce_stock', { items: [] });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error };
+    const languages = await this.db.from('products').select('name_es', { head: true });
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error };
   }
 }

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { DEMO_CATALOG, catHref, categories, guides, productHref } from '@/lib/catalog';
+import { localePath } from '@/lib/i18n';
 import { getPublicProducts } from '@/lib/products';
 import { INDEXABLE, absolute } from '@/lib/seo';
 
@@ -11,5 +12,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...guides.map((g) => `/guide/${g.id}`),
     ...(DEMO_CATALOG ? [] : (await getPublicProducts()).map((p) => productHref(p.id))),
   ];
-  return paths.map((p) => ({ url: absolute(p) }));
+  return paths.flatMap((p) => {
+    const alternates = { languages: { en: absolute(p), es: absolute(localePath('es', p)) } };
+    return [{ url: absolute(p), alternates }, { url: absolute(localePath('es', p)), alternates }];
+  });
 }

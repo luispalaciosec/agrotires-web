@@ -17,9 +17,11 @@ const optionalNumber = z.string().trim().transform((v, ctx) => {
 const schema = z.object({
   sku: z.string().trim().min(1, 'SKU is required').max(80),
   name: z.string().trim().min(1, 'Name is required').max(200),
+  nameEs: optionalText(200),
   cat: z.string().refine((v) => CATEGORY_IDS.includes(v), 'Choose a valid category'),
   brand: optionalText(120),
   desc: z.string().trim().max(5000),
+  descEs: optionalText(5000),
   price: optionalNumber,
   stockQty: optionalNumber,
   img: z.string().refine((v) => PRODUCT_IMAGES.includes(v), 'Choose an available image'),

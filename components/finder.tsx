@@ -1,79 +1,80 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { catHref } from '@/lib/catalog';
 import { useSearchNav } from './chrome';
+import { useStore } from './store';
 import { Icon } from './ui';
 
 export type FinderTab = 'tire' | 'part' | 'machine';
 
-const OPTIONS: Record<FinderTab, string[]> = {
-  tire: ['All agricultural tires', 'Tractor tire', 'Implement tire'],
-  part: ['All replacement parts', 'Hydraulics', 'Filters', 'Belts'],
-  machine: ['All equipment', 'Tractor', 'Combine', 'Sprayer', 'Planter', 'Implement'],
-};
-const CAT_LABEL: Record<FinderTab, string> = { tire: 'Tire application', part: 'Part category', machine: 'Equipment type' };
-const TERM_LABEL: Record<FinderTab, string> = { tire: 'Tire size or keyword', part: 'Part number or keyword', machine: 'Model or keyword' };
-const PLACEHOLDER: Record<FinderTab, string> = { tire: 'e.g. rear tractor tire', part: 'e.g. hydraulic filter', machine: 'e.g. tractor' };
-const TABS: [FinderTab, string][] = [['tire', 'Find a tire'], ['part', 'Find a part'], ['machine', 'By machine']];
+// Search terms for each option, by position. Tags stay in English in the data,
+// and the search also matches each product's name in both languages.
+const PART_TERMS = ['part', 'hydraulic', 'filter', 'belt'];
+const MACHINE_TERMS = ['', 'tractor', 'combine', 'sprayer', 'planter', 'implement'];
 
 export function FinderWidget({ initialTab = 'tire' }: { initialTab?: FinderTab }) {
   const [tab, setTab] = useState<FinderTab>(initialTab);
   const router = useRouter();
   const navigateSearch = useSearchNav();
+  const { t, href } = useStore();
+  const f = t.finder;
+  const options = tab === 'tire' ? f.optTire : tab === 'part' ? f.optPart : f.optMachine;
+  const TABS: [FinderTab, string][] = [['tire', f.tabTire], ['part', f.tabPart], ['machine', f.tabMachine]];
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     let q = String(data.get('term') || '').trim();
-    const cat = String(data.get('category') || '').toLowerCase();
+    const index = options.indexOf(String(data.get('category') || ''));
     if (!q || q.length < 3) {
       if (tab === 'tire') q = 'tire';
-      else if (tab === 'part') q = cat.includes('filter') ? 'filter' : cat.includes('belt') ? 'belt' : cat.includes('hydraulic') ? 'hydraulic' : 'part';
-      else q = cat.includes('all') ? '' : cat;
+      else if (tab === 'part') q = PART_TERMS[index] ?? 'part';
+      else q = MACHINE_TERMS[index] ?? '';
     }
-    if (tab === 'tire' && q.toLowerCase() === 'tire') router.push(catHref('tires'));
-    else if (tab === 'part' && q.toLowerCase() === 'part') router.push(catHref('parts'));
+    if (tab === 'tire' && q.toLowerCase() === 'tire') router.push(href(catHref('tires')));
+    else if (tab === 'part' && q.toLowerCase() === 'part') router.push(href(catHref('parts')));
     else navigateSearch(q);
   };
 
   return (
     <div className="finder-widget">
-      <div className="tabs" role="tablist" aria-label="Search type">
+      <div className="tabs" role="tablist" aria-label={f.tabsLabel}>
         {TABS.map(([id, label]) => (
           <button key={id} className={`tab ${tab === id ? 'active' : ''}`} type="button" onClick={() => setTab(id)} role="tab" aria-selected={tab === id}>{label}</button>
         ))}
       </div>
       <form id="finder-form" key={tab} onSubmit={onSubmit}>
         <div className="field">
-          <label className="field-label" htmlFor="finder-cat">{CAT_LABEL[tab]}</label>
+          <label className="field-label" htmlFor="finder-cat">{tab === 'tire' ? f.catTire : tab === 'part' ? f.catPart : f.catMachine}</label>
           <select name="category" className="select-input" id="finder-cat">
-            {OPTIONS[tab].map((s) => <option key={s}>{s}</option>)}
+            {options.map((s) => <option key={s}>{s}</option>)}
           </select>
         </div>
         <div className="field">
-          <label className="field-label" htmlFor="finder-term">{TERM_LABEL[tab]}</label>
-          <input className="text-input" id="finder-term" name="term" placeholder={PLACEHOLDER[tab]} />
+          <label className="field-label" htmlFor="finder-term">{tab === 'tire' ? f.termTire : tab === 'part' ? f.termPart : f.termMachine}</label>
+          <input className="text-input" id="finder-term" name="term" placeholder={tab === 'tire' ? f.phTire : tab === 'part' ? f.phPart : f.phMachine} />
         </div>
-        <button className="btn btn-block" type="submit">Search sample catalog <Icon name="arrow" size="sm" /></button>
-        <p className="fine-print">Preview tool only. Machine fitment and tire compatibility are not verified.</p>
+        <button className="btn btn-block" type="submit">{f.submit} <Icon name="arrow" size="sm" /></button>
+        <p className="fine-print">{f.fine}</p>
       </form>
     </div>
   );
 }
 
 export function FinderSection({ initialTab }: { initialTab?: FinderTab }) {
+  const f = useStore().t.finder;
   return (
     <section className="section finder-section top-offset" id="finder-section">
       <div className="container finder-grid">
         <div className="finder-copy">
-          <div className="eyebrow">SMARTER SEARCH STARTS HERE</div>
-          <h2 style={{ maxWidth: 440, marginTop: 11 }}>The right solution starts with a better search.</h2>
-          <p>Tell us what you&apos;re working with. Browse sample results by tire, part, or equipment type—without navigating a complicated catalog.</p>
-          <div className="finder-feature"><Icon name="check" /> Simple, step-by-step discovery</div>
-          <div className="finder-feature"><Icon name="check" /> Search by names, categories, and part numbers</div>
-          <div className="finder-feature"><Icon name="check" /> Ask for help when you need certainty</div>
+          <div className="eyebrow">{f.eyebrow}</div>
+          <h2 style={{ maxWidth: 440, marginTop: 11 }}>{f.title}</h2>
+          <p>{f.text}</p>
+          <div className="finder-feature"><Icon name="check" /> {f.feature1}</div>
+          <div className="finder-feature"><Icon name="check" /> {f.feature2}</div>
+          <div className="finder-feature"><Icon name="check" /> {f.feature3}</div>
         </div>
         <FinderWidget key={initialTab} initialTab={initialTab} />
       </div>
@@ -81,15 +82,23 @@ export function FinderSection({ initialTab }: { initialTab?: FinderTab }) {
   );
 }
 
+// Reads the browser URL for the same reason as ShopFromUrl. Only for the dynamic finder page:
+// on the static home page this hook would remove the section from the server HTML.
+export function FinderFromUrl() {
+  const tab = useSearchParams().get('tab');
+  return <FinderSection initialTab={tab === 'part' || tab === 'machine' ? tab : 'tire'} />;
+}
+
 export function HeroSearch() {
   const navigateSearch = useSearchNav();
+  const h = useStore().t.home;
   return (
     <div className="search-band">
       <div className="container">
         <form className="search-card" id="hero-search" onSubmit={(e) => { e.preventDefault(); navigateSearch(String(new FormData(e.currentTarget).get('search') || '')); }}>
-          <div className="search-label"><strong>What are you looking for?</strong><small>Start your search right here.</small></div>
-          <label className="search-field"><Icon name="search" /><input name="search" placeholder="Try 'tractor tire', 'filter', or a part number" aria-label="Search catalog" required /></label>
-          <button className="btn" type="submit">Search catalog <Icon name="arrow" size="sm" /></button>
+          <div className="search-label"><strong>{h.searchTitle}</strong><small>{h.searchText}</small></div>
+          <label className="search-field"><Icon name="search" /><input name="search" placeholder={h.searchPlaceholder} aria-label={h.searchLabel} required /></label>
+          <button className="btn" type="submit">{h.searchBtn} <Icon name="arrow" size="sm" /></button>
         </form>
       </div>
     </div>

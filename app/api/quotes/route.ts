@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LOCALES } from '@/lib/i18n';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { getStore } from '@/lib/server/store';
 
@@ -10,6 +11,7 @@ const schema = z.object({
   topic: z.enum(['Product question', 'Freight shipping', 'Equipment compatibility', 'Bulk order', 'Something else']),
   product: z.string().trim().max(200).optional(),
   message: z.string().trim().min(1).max(5000),
+  locale: z.enum(LOCALES).optional(),
   website: z.string().optional(), // honeypot: hidden from people, filled in by bots
 });
 

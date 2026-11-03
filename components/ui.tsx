@@ -2,6 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
 import { catHref, type Category, type Guide } from '@/lib/catalog';
+import { localePath, type Locale } from '@/lib/i18n';
+import { messages } from '@/lib/messages';
 
 const svgPaths: Record<string, string> = {
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.4-4.4"/>',
@@ -57,12 +59,12 @@ export function Asset({ name, alt, sizes, className, preload }: { name: string; 
   return <Image src={`/assets/${name}`} alt={alt} width={width} height={height} sizes={sizes} className={className} preload={preload} unoptimized={name.endsWith('.svg')} />;
 }
 
-export function PageHead({ title, desc, crumbs }: { title: ReactNode; desc: ReactNode; crumbs?: string }) {
+export function PageHead({ locale, title, desc, crumbs }: { locale: Locale; title: ReactNode; desc: ReactNode; crumbs?: string }) {
   return (
     <div className="page-head">
       <div className="container">
         <div className="breadcrumb">
-          <Link href="/">Home</Link>
+          <Link href={localePath(locale, '/')}>{messages[locale].common.home}</Link>
           {crumbs ? <> <Icon name="right" size="xs" /> {crumbs}</> : null}
         </div>
         <h1>{title}</h1>
@@ -72,21 +74,21 @@ export function PageHead({ title, desc, crumbs }: { title: ReactNode; desc: Reac
   );
 }
 
-export function EmptyState({ title, body, btn = 'Explore products', link = '/shop' }: { title: string; body: string; btn?: string; link?: string }) {
+export function EmptyState({ locale, title, body, btn, link = '/shop' }: { locale: Locale; title: string; body: string; btn?: string; link?: string }) {
   return (
     <div className="empty-state">
       <Icon name="search" size="xl" />
       <h3>{title}</h3>
       <p>{body}</p>
-      <Link className="btn" href={link}>{btn} <Icon name="arrow" size="sm" /></Link>
+      <Link className="btn" href={localePath(locale, link)}>{btn ?? messages[locale].common.explore} <Icon name="arrow" size="sm" /></Link>
     </div>
   );
 }
 
-export function CategoryCard({ category: c }: { category: Category }) {
+export function CategoryCard({ category: c, locale }: { category: Category; locale: Locale }) {
   return (
-    <Link className="category-card category-photo" href={c.id === 'machine' ? '/finder?tab=machine' : catHref(c.id)}>
-      <Asset className="cat-img" name={c.img} alt={`Agricultural ${c.name.toLowerCase()} visual`} sizes="(max-width: 720px) 50vw, 400px" />
+    <Link className="category-card category-photo" href={localePath(locale, c.id === 'machine' ? '/finder?tab=machine' : catHref(c.id))}>
+      <Asset className="cat-img" name={c.img} alt={messages[locale].home.catAlt(c.name)} sizes="(max-width: 720px) 50vw, 400px" />
       <div className="cat-copy">
         <div className="cat-kicker">{c.tag}</div>
         <h3>{c.name}</h3>
@@ -96,13 +98,13 @@ export function CategoryCard({ category: c }: { category: Category }) {
   );
 }
 
-export function GuideCard({ guide: g }: { guide: Guide }) {
+export function GuideCard({ guide: g, locale }: { guide: Guide; locale: Locale }) {
   return (
     <article className="guide-card">
       <div className="guide-icon"><Icon name={g.icon} /></div>
       <h3>{g.title}</h3>
       <p>{g.subtitle}</p>
-      <Link className="text-link" href={`/guide/${g.id}`}>Read guide <Icon name="arrow" size="sm" /></Link>
+      <Link className="text-link" href={localePath(locale, `/guide/${g.id}`)}>{messages[locale].common.readGuide} <Icon name="arrow" size="sm" /></Link>
     </article>
   );
 }

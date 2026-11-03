@@ -60,7 +60,8 @@ export function ProductForm({ product }: { product?: StoredProduct }) {
       <div className="admin-card form-card" style={{ padding: 22, boxShadow: 'none' }}>
         <h2>Basics</h2>
         <div className="form-grid">
-          <Text full name="name" label="Name *" value={product?.name} required />
+          <Text full name="name" label="Name in English *" value={product?.name} required />
+          <Text full name="nameEs" label="Name in Spanish" value={product?.nameEs} />
           <Text name="sku" label="SKU / part number *" value={product?.sku} required />
           <Text name="brand" label="Brand" value={product?.brand} />
           <div className="field">
@@ -76,8 +77,12 @@ export function ProductForm({ product }: { product?: StoredProduct }) {
             </select>
           </div>
           <div className="field full-width">
-            <label className="field-label" htmlFor="desc">Description</label>
+            <label className="field-label" htmlFor="desc">Description in English</label>
             <textarea className="textarea" id="desc" name="desc" rows={5} defaultValue={product?.desc} />
+          </div>
+          <div className="field full-width">
+            <label className="field-label" htmlFor="descEs">Description in Spanish</label>
+            <textarea className="textarea" id="descEs" name="descEs" rows={5} defaultValue={product?.descEs} />
           </div>
         </div>
       </div>

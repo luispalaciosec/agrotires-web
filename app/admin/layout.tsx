@@ -1,17 +1,27 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { fontClasses } from '@/lib/fonts';
 import { Asset, Icon } from '@/components/ui';
 import { isAdmin } from '@/lib/server/admin-auth';
 import { getStore } from '@/lib/server/store';
 import { logoutAction } from './actions';
+import '../globals.css';
 import './admin.css';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Admin', robots: { index: false, follow: false } };
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  if (!(await isAdmin())) return <>{children}</>;
+  const signedIn = await isAdmin();
+  return (
+    <html lang="en" className={fontClasses}>
+      <body>{signedIn ? <AdminShell>{children}</AdminShell> : children}</body>
+    </html>
+  );
+}
+
+function AdminShell({ children }: { children: ReactNode }) {
   return (
     <div className="admin">
       <aside className="admin-side">

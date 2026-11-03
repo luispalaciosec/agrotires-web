@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { LOCALES } from '@/lib/i18n';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { createPayPalOrder, paymentsEnabled } from '@/lib/server/paypal';
 import { CartError, cartSchema, priceCart } from '@/lib/server/pricing';
 import { getStore } from '@/lib/server/store';
 
-const schema = z.object({ email: z.string().trim().email().max(200), items: cartSchema });
+const schema = z.object({ email: z.string().trim().email().max(200), items: cartSchema, locale: z.enum(LOCALES).optional() });
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
   try {
     const { items, subtotalCents } = priceCart(parsed.data.items, await store.listProducts());
     // Shipping and tax stay at zero until real rules exist; PAYPAL_ENV=live is blocked meanwhile by the demo catalog.
-    const order = await store.createOrder({ email: parsed.data.email, items, subtotalCents, shippingCents: 0, taxCents: 0, totalCents: subtotalCents, currency: 'USD' });
+    const order = await store.createOrder({ email: parsed.data.email, items, subtotalCents, shippingCents: 0, taxCents: 0, totalCents: subtotalCents, currency: 'USD', locale: parsed.data.locale });
     const paypalOrderId = await createPayPalOrder(order);
     await store.updateOrder(order.id, { paypalOrderId });
     return json({ orderId: order.id, paypalOrderId }, 201);

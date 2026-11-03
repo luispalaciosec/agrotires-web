@@ -9,7 +9,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   if (!store) return null;
   const { q = '' } = await searchParams;
   const term = q.trim().toLowerCase();
-  const list = (await store.listProducts()).filter((p) => !term || [p.name, p.sku, p.brand, p.tireSize].join(' ').toLowerCase().includes(term));
+  const list = (await store.listProducts()).filter((p) => !term || [p.name, p.nameEs, p.sku, p.brand, p.tireSize].join(' ').toLowerCase().includes(term));
   return (
     <>
       <div className="admin-head">
@@ -28,7 +28,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
             <tbody>
               {list.map((p) => (
                 <tr key={p.id}>
-                  <td><Link href={`/admin/products/${encodeURIComponent(p.id)}`}>{p.name}</Link></td>
+                  <td><Link href={`/admin/products/${encodeURIComponent(p.id)}`}>{p.name}</Link>{p.nameEs ? null : <> <span className="admin-pill warn">No Spanish</span></>}</td>
                   <td>{p.sku}</td>
                   <td>{getCategory(p.cat)?.name}</td>
                   <td>{p.price === null ? <span className="admin-pill warn">No price</span> : money(p.price)}</td>

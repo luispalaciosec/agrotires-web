@@ -56,3 +56,13 @@
 .quote-actions{display:flex;gap:11px;flex-direction:column;margin-top:15px}
 @media(max-width:1200px){.top-email{display:none}}
 @media(max-width:720px){.contact-direct{align-items:flex-start;flex-direction:column;gap:12px;padding:22px}.contact-direct .btn{margin-left:0;width:100%}}
+
+/* Language selector. */
+.language-switch{display:inline-flex;align-items:center;gap:0}
+.language-switch a{opacity:.72}
+.language-switch a:hover{opacity:1;text-decoration:underline}
+.language-switch a.language-active{opacity:1;font-weight:900;color:var(--yellow)}
+.mobile-panel .mobile-language{display:flex;align-items:center;justify-content:space-between;font-size:14px;padding:13px;border-bottom:1px solid #edf1ed;font-weight:800}
+.mobile-panel .language-switch{gap:6px}
+.mobile-panel .language-switch a{display:inline-block;border:1px solid var(--border);border-bottom:1px solid var(--border);border-radius:8px;padding:6px 11px;font-size:12px;opacity:1}
+.mobile-panel .language-switch a.language-active{background:var(--forest);border-color:var(--forest);color:#fff}

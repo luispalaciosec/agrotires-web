@@ -51,9 +51,11 @@ export function importProducts(text: string, catalog: StoredProduct[]): ImportRe
     const result = parseProduct({
       sku: get('sku'),
       name: get('name'),
+      nameEs: get('name_es') || existing?.nameEs || '',
       cat: get('category'),
       brand: get('brand'),
       desc: get('description'),
+      descEs: get('description_es') || existing?.descEs || '',
       price: get('price_usd'),
       stockQty: get('stock_qty'),
       img: get('image_filename'),

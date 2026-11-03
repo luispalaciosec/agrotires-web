@@ -7,7 +7,7 @@ import type { StoredProduct } from '@/lib/server/store';
 
 const catalog: StoredProduct[] = demoProducts.map((p) => ({ ...p, stockQty: null, active: true, shippingClass: 'parcel', compatibilityVerified: false }));
 const input: ProductInput = {
-  sku: 'NEW-1', name: 'New Tire', cat: 'tires', brand: '', desc: '', price: '10.50', stockQty: '3', img: 'agro-tires.webp', tags: 'Tractor, Planter',
+  sku: 'NEW-1', name: 'New Tire', nameEs: '', cat: 'tires', brand: '', desc: '', descEs: '', price: '10.50', stockQty: '3', img: 'agro-tires.webp', tags: 'Tractor, Planter',
   tireSize: '', equipmentMake: '', equipmentModel: '', shippingClass: 'parcel', weightLb: '', lengthIn: '', widthIn: '', heightIn: '', compatibilityVerified: false, active: true,
 };
 const HEADER = 'sku,name,category,brand,description,price_usd,currency,stock_qty,weight_lb,length_in,width_in,height_in,tire_size,equipment_make,equipment_model,compatibility_verified,image_filename,shipping_class,active';
@@ -68,6 +68,10 @@ describe('CSV import', () => {
     const r = importProducts(`${HEADER}\n${row()}\n${row({ sku: 'A', cat: 'nope' })}\n${row({ sku: 'B', price: '', active: 'true' })}\n${row({ sku: 'C', currency: 'EUR' })}\n`, catalog);
     expect(r).toMatchObject({ ok: false });
     if (!r.ok) expect(r.errors).toHaveLength(3);
+  });
+  it('reads optional Spanish columns', () => {
+    const r = importProducts(`${HEADER},name_es,description_es\n${row()},Llanta grande,Descripción\n`, catalog);
+    expect(r).toMatchObject({ ok: true, products: [{ nameEs: 'Llanta grande', descEs: 'Descripción' }] });
   });
   it('rejects repeated SKUs in the same file and missing columns', () => {
     expect(importProducts(`${HEADER}\n${row()}\n${row({ name: 'Again' })}\n`, catalog)).toMatchObject({ ok: true, created: 1, updated: 1 });
