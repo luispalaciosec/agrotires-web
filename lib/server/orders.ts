@@ -71,7 +71,8 @@ export async function issueRefund(store: Store, stale: Order, cents: number): Pr
 export async function settleCapture(store: Store, stale: Order, capture: PayPalCapture) {
   // Capturing takes seconds and the webhook can land meanwhile, so never decide from the earlier read.
   const order = (await store.getOrder(stale.id)) ?? stale;
-  const shippingAddress = capture.shipping;
+  // The address given at checkout was locked for PayPal; older orders take the one PayPal returns.
+  const shippingAddress = order.shippingAddress ?? capture.shipping;
   if (order.status === 'paid' || order.status === 'fulfilled' || order.status === 'refunded') {
     return shippingAddress && !order.shippingAddress ? store.updateOrder(order.id, { shippingAddress }) : order;
   }

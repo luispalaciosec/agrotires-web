@@ -50,12 +50,29 @@ async function authed<T>(path: string, body: unknown, requestId?: string) {
 }
 
 export async function createPayPalOrder(order: Order) {
+  const a = order.shippingAddress;
   const { id } = await authed<{ id: string }>('/v2/checkout/orders', {
     intent: 'CAPTURE',
     purchase_units: [{
       custom_id: order.id,
-      amount: { currency_code: order.currency, value: centsToValue(order.totalCents) },
+      amount: {
+        currency_code: order.currency,
+        value: centsToValue(order.totalCents),
+        breakdown: {
+          item_total: { currency_code: order.currency, value: centsToValue(order.subtotalCents) },
+          shipping: { currency_code: order.currency, value: centsToValue(order.shippingCents) },
+          tax_total: { currency_code: order.currency, value: centsToValue(order.taxCents) },
+        },
+      },
+      ...(a ? {
+        shipping: {
+          name: { full_name: a.name },
+          address: { address_line_1: a.line1, address_line_2: a.line2, admin_area_2: a.city, admin_area_1: a.state, postal_code: a.postalCode, country_code: a.country },
+        },
+      } : {}),
     }],
+    // The tax was calculated for this address, so the customer cannot change it inside PayPal.
+    ...(a ? { payment_source: { paypal: { experience_context: { shipping_preference: 'SET_PROVIDED_ADDRESS' } } } } : {}),
   }, `create-${order.id}`);
   return id;
 }

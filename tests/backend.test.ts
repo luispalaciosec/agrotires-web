@@ -15,6 +15,7 @@ import { getStore, type StoredProduct } from '@/lib/server/store';
 const file = path.join(mkdtempSync(path.join(tmpdir(), 'agrotires-')), 'store.json');
 let ip = 0;
 let paypalIds = 0;
+const ADDRESS = { name: 'Ana Ruiz', line1: '1 Farm Rd', city: 'Ames', state: 'IA', postalCode: '50010' };
 
 const post = (url: string, body: unknown, headers: Record<string, string> = {}) => new Request(`http://localhost:3000${url}`, {
   method: 'POST',
@@ -103,22 +104,22 @@ describe('POST /api/quotes', () => {
 
 describe('checkout', () => {
   it('answers 503 while payments are off', async () => {
-    expect((await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 1 }] }))).status).toBe(503);
+    expect((await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 1 }] }))).status).toBe(503);
   });
 
   it('ignores any price sent by the browser', async () => {
     enablePayments();
     const calls = mockPayPal();
-    const res = await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2, price: 1 }] }));
+    const res = await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 2, price: 1 }] }));
     expect(res.status).toBe(201);
     const sent = JSON.parse(String(calls.find((c) => c.url.endsWith('/v2/checkout/orders'))!.init!.body));
-    expect(sent.purchase_units[0].amount).toEqual({ currency_code: 'USD', value: '1378.00' });
+    expect(sent.purchase_units[0].amount).toMatchObject({ currency_code: 'USD', value: '1378.00' });
   });
 
   it('marks the order paid once, and a repeat does not charge again', async () => {
     enablePayments();
     const calls = mockPayPal();
-    const { paypalOrderId, orderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
+    const { paypalOrderId, orderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
     const first = await (await capture(post('/api/checkout/capture', { paypalOrderId }))).json();
     expect(first).toEqual({ orderId, status: 'paid' });
     const captures = () => calls.filter((c) => c.url.endsWith('/capture')).length;
@@ -130,20 +131,20 @@ describe('checkout', () => {
   it('does not mark paid when the captured amount differs', async () => {
     enablePayments();
     mockPayPal({ purchase_units: [{ payments: { captures: [{ id: 'CAP2', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1.00' } }] } }] });
-    const { paypalOrderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
+    const { paypalOrderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
     expect((await (await capture(post('/api/checkout/capture', { paypalOrderId }))).json()).status).toBe('payment_failed');
   });
 
-  it('saves the address PayPal returns, and a decline fails the order without a charge', async () => {
+  it('keeps the address given at checkout, and a decline fails the order without a charge', async () => {
     enablePayments();
     const shipping = { name: { full_name: 'Ana Ruiz' }, address: { address_line_1: '1 Farm Rd', admin_area_2: 'Ames', admin_area_1: 'IA', postal_code: '50010', country_code: 'US' } };
     mockPayPal({ purchase_units: [{ shipping, payments: { captures: [{ id: 'CAP4', status: 'COMPLETED', amount: { currency_code: 'USD', value: '1378.00' } }] } }] });
-    const ok = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
+    const ok = await (await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
     await capture(post('/api/checkout/capture', { paypalOrderId: ok.paypalOrderId }));
     expect((await getStore()!.getOrder(ok.orderId))!.shippingAddress).toEqual({ name: 'Ana Ruiz', line1: '1 Farm Rd', city: 'Ames', state: 'IA', postalCode: '50010', country: 'US' });
 
     mockPayPal();
-    const declined = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 1 }] }))).json();
+    const declined = await (await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 1 }] }))).json();
     const base = vi.mocked(fetch).getMockImplementation()!;
     vi.mocked(fetch).mockImplementation(async (url, init) => (String(url).endsWith('/capture') ? Response.json({ details: [{ issue: 'INSTRUMENT_DECLINED' }] }, { status: 422 }) : base(url, init)));
     const res = await capture(post('/api/checkout/capture', { paypalOrderId: declined.paypalOrderId }));
@@ -158,7 +159,7 @@ describe('checkout', () => {
     const before = await store.listProducts();
     await store.saveProducts(before.map((p) => (p.id === 'tire-r1' ? { ...p, stockQty: 10 } : p)));
     mockPayPal();
-    const { paypalOrderId, orderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
+    const { paypalOrderId, orderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
     const stale = (await store.getOrder(orderId))!;
     const resource = { id: 'CAP5', status: 'COMPLETED', custom_id: orderId, amount: { currency_code: 'USD', value: '1378.00' } };
     await webhook(post('/api/paypal/webhook', { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource }));
@@ -174,7 +175,7 @@ describe('checkout', () => {
     const before = await store.listProducts();
     await store.saveProducts(before.map((p) => (p.id === 'tire-r1' ? { ...p, shippingClass: 'freight_quote' as const } : p)));
     const calls = mockPayPal();
-    const res = await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 1 }] }));
+    const res = await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 1 }] }));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('freight');
     expect(calls.length).toBe(0);
@@ -184,7 +185,7 @@ describe('checkout', () => {
   it('webhook settles a pending order and handles full refunds', async () => {
     enablePayments();
     mockPayPal();
-    const { orderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
+    const { orderId } = await (await checkout(post('/api/checkout', { email: 'a@b.test', address: ADDRESS, items: [{ id: 'tire-r1', quantity: 2 }] }))).json();
     const resource = { id: 'CAP3', status: 'COMPLETED', custom_id: orderId, amount: { currency_code: 'USD', value: '1378.00' } };
     await webhook(post('/api/paypal/webhook', { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource }));
     expect((await getStore()!.getOrder(orderId))!.status).toBe('paid');

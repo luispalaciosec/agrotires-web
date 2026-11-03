@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Script from 'next/script';
 import { useEffect, useRef, useState } from 'react';
 import { BUSINESS } from '@/lib/catalog';
+import { US_STATES } from '@/lib/tax';
 import { useStore } from './store';
 import { Icon } from './ui';
 
@@ -28,14 +29,13 @@ declare global {
 // Stops PayPal's own error handling once this screen has already told the customer what happened.
 class Reported extends Error {}
 
-export function PayPalCheckout({ config, onDone }: { config: PayPalConfig; onDone: (order: PaidOrder) => void }) {
+export function PayPalCheckout({ config, onDone, onStateChange }: { config: PayPalConfig; onDone: (order: PaidOrder) => void; onStateChange: (state: string) => void }) {
   const { cart, t, locale, href } = useStore();
   const l = t.checkout.live;
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [freight, setFreight] = useState(false);
   const form = useRef<HTMLFormElement>(null);
-  const email = useRef<HTMLInputElement>(null);
   const holder = useRef<HTMLDivElement>(null);
   // The buttons render once, so their callbacks read the latest values from here.
   const latest = useRef({ cart, l, locale, onDone });
@@ -45,6 +45,10 @@ export function PayPalCheckout({ config, onDone }: { config: PayPalConfig; onDon
 
   useEffect(() => {
     if (!ready || !holder.current || !window.paypal) return;
+    const customer = () => {
+      const d = Object.fromEntries(new FormData(form.current!).entries()) as Record<string, string>;
+      return { email: d.email, address: { name: d.name, line1: d.line1, line2: d.line2, city: d.city, state: d.state, postalCode: d.postalCode } };
+    };
     const fail = (message: string, isFreight = false): never => {
       setError(message);
       setFreight(isFreight);
@@ -63,7 +67,7 @@ export function PayPalCheckout({ config, onDone }: { config: PayPalConfig; onDon
         const res = await fetch('/api/checkout', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ email: email.current?.value, locale: lang, items: Object.entries(items).map(([id, quantity]) => ({ id, quantity })) }),
+          body: JSON.stringify({ ...customer(), locale: lang, items: Object.entries(items).map(([id, quantity]) => ({ id, quantity })) }),
         }).catch(() => undefined);
         const body = await res?.json().catch(() => undefined);
         if (res?.ok && body?.paypalOrderId) return body.paypalOrderId as string;
@@ -82,7 +86,7 @@ export function PayPalCheckout({ config, onDone }: { config: PayPalConfig; onDon
         }).catch(() => undefined);
         const body = await res?.json().catch(() => undefined);
         if (res?.ok && (body?.status === 'paid' || body?.status === 'pending_payment')) {
-          done({ orderId: body.orderId, status: body.status, email: email.current?.value ?? '' });
+          done({ orderId: body.orderId, status: body.status, email: customer().email });
           return;
         }
         // Only a decline is certain to be uncharged; anything else may have gone through.
@@ -110,10 +114,25 @@ export function PayPalCheckout({ config, onDone }: { config: PayPalConfig; onDon
       <form ref={form} onSubmit={(e) => e.preventDefault()}>
         <div className="field">
           <label className="field-label" htmlFor="checkout-email">{l.email}</label>
-          <input ref={email} id="checkout-email" className="text-input" name="email" type="email" autoComplete="email" maxLength={200} required />
+          <input id="checkout-email" className="text-input" name="email" type="email" autoComplete="email" maxLength={200} required />
+        </div>
+        <p style={{ fontSize: 13 }}>{l.emailHelp}</p>
+        <h2 style={{ marginTop: 25 }}>{l.addressTitle}</h2>
+        <div className="form-grid">
+          <div className="field full-width"><label className="field-label" htmlFor="checkout-name">{l.fullName}</label><input id="checkout-name" className="text-input" name="name" autoComplete="name" maxLength={120} required /></div>
+          <div className="field full-width"><label className="field-label" htmlFor="checkout-line1">{l.line1}</label><input id="checkout-line1" className="text-input" name="line1" autoComplete="address-line1" maxLength={200} required /></div>
+          <div className="field full-width"><label className="field-label" htmlFor="checkout-line2">{l.line2}</label><input id="checkout-line2" className="text-input" name="line2" autoComplete="address-line2" maxLength={200} /></div>
+          <div className="field full-width"><label className="field-label" htmlFor="checkout-city">{l.city}</label><input id="checkout-city" className="text-input" name="city" autoComplete="address-level2" maxLength={120} required /></div>
+          <div className="field">
+            <label className="field-label" htmlFor="checkout-state">{l.state}</label>
+            <select id="checkout-state" className="select-input" name="state" autoComplete="address-level1" required defaultValue="" onChange={(e) => onStateChange(e.target.value)}>
+              <option value="" disabled>{l.chooseState}</option>
+              {US_STATES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            </select>
+          </div>
+          <div className="field"><label className="field-label" htmlFor="checkout-zip">{l.zip}</label><input id="checkout-zip" className="text-input" name="postalCode" autoComplete="postal-code" inputMode="numeric" pattern="[0-9]{5}(-[0-9]{4})?" required /></div>
         </div>
       </form>
-      <p style={{ fontSize: 13 }}>{l.emailHelp}</p>
       <h2 style={{ marginTop: 25 }}>{l.payTitle}</h2>
       <p style={{ fontSize: 13 }}>{l.payHelp}</p>
       {error ? (

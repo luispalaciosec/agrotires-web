@@ -6,6 +6,7 @@ import { Asset, Icon } from '@/components/ui';
 import { isAdmin } from '@/lib/server/admin-auth';
 import { getStore } from '@/lib/server/store';
 import { logoutAction } from './actions';
+import { AdminNav } from './nav';
 import '../globals.css';
 import './admin.css';
 
@@ -26,12 +27,11 @@ function AdminShell({ children }: { children: ReactNode }) {
     <div className="admin">
       <aside className="admin-side">
         <div className="admin-brand"><Asset name="agrotires-logo-web.webp" alt="" sizes="40px" /> AGROTIRES</div>
-        <Link href="/admin"><Icon name="box" size="sm" /> Overview</Link>
-        <Link href="/admin/products"><Icon name="clipboard" size="sm" /> Products</Link>
-        <Link href="/admin/orders"><Icon name="file" size="sm" /> Orders</Link>
-        <Link href="/admin/quotes"><Icon name="mail" size="sm" /> Quote requests</Link>
-        <Link href="/" target="_blank"><Icon name="arrow" size="sm" /> View store</Link>
-        <form action={logoutAction}><button type="submit"><Icon name="close" size="sm" /> Sign out</button></form>
+        <AdminNav />
+        <div className="admin-side-foot">
+          <Link href="/" target="_blank"><Icon name="arrow" size="sm" /> View store</Link>
+          <form action={logoutAction}><button type="submit"><Icon name="close" size="sm" /> Sign out</button></form>
+        </div>
       </aside>
       <main className="admin-main" id="main-content">
         {getStore() ? children : <div className="notice"><Icon name="info" size="sm" /> Storage is not configured. Set STORE_DRIVER to use the panel.</div>}

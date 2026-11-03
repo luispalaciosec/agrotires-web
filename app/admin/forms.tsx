@@ -7,7 +7,7 @@ import { deleteProductAction, importProductsAction, loginAction, refundOrderActi
 
 const empty: FormState = {};
 
-function Messages({ state }: { state: FormState }) {
+export function Messages({ state }: { state: FormState }) {
   return (
     <>
       {state.error ? <div className="admin-error" role="alert">{state.error}</div> : null}

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { BUSINESS, money } from '@/lib/catalog';
+import { taxCents } from '@/lib/tax';
 import { PayPalCheckout, type PaidOrder, type PayPalConfig } from './paypal-checkout';
 import { ProductCard } from './product';
 import { useStore } from './store';
@@ -17,11 +18,12 @@ export function WishlistItems() {
     : <EmptyState locale={locale} title={t.wishlist.emptyTitle} body={t.wishlist.emptyBody} />;
 }
 
-export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
+export function CheckoutView({ paypal, taxRates = {} }: { paypal?: PayPalConfig; taxRates?: Record<string, number> }) {
   const { cart, total, hydrated, getProduct, t, href, locale, clearCart } = useStore();
   const c = t.checkout;
   const l = c.live;
   const [paid, setPaid] = useState<PaidOrder>();
+  const [taxState, setTaxState] = useState('');
   if (paid) {
     return (
       <main id="main-content">
@@ -51,17 +53,20 @@ export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
     return <div className="checkout-line" key={id}><span>{p.name} <span className="muted">× {qty}</span></span><strong>{money(p.price * qty)}</strong></div>;
   });
   if (paypal) {
+    const tax = taxCents(Math.round(total * 100), taxRates[taxState] ?? 0) / 100;
     return (
       <main id="main-content">
         <PageHead locale={locale} title={l.title} desc={l.desc} crumbs={l.crumb} />
         <div className="container checkout-grid">
           <div className="form-card">
-            <PayPalCheckout config={paypal} onDone={(order) => { setPaid(order); clearCart(); }} />
+            <PayPalCheckout config={paypal} onStateChange={setTaxState} onDone={(order) => { setPaid(order); clearCart(); }} />
           </div>
           <aside className="checkout-summary">
             <h3>{l.summary}</h3>
             {lines}
-            <div className="checkout-total"><span>{l.total}</span><span>{money(total)}</span></div>
+            <div className="checkout-line"><span>{l.tax}</span><strong>{taxState ? money(tax) : '—'}</strong></div>
+            <div className="checkout-total"><span>{l.total}</span><span>{money(total + tax)}</span></div>
+            {taxState ? null : <p className="mini muted">{l.taxHint}</p>}
             {paypal.sandbox ? <p className="mini muted">{l.noExtras}</p> : null}
           </aside>
         </div>

@@ -3,16 +3,21 @@ import { money } from '@/lib/catalog';
 import { isFullAdmin, requireAdmin } from '@/lib/server/admin-auth';
 import { orderRef } from '@/lib/server/email';
 import { refundableCents } from '@/lib/server/orders';
+import { carrierLink, STATUS_LABELS } from '@/lib/shipping';
 import { paymentsEnabled } from '@/lib/server/paypal';
 import { getStore } from '@/lib/server/store';
 import { updateOrderStatusAction } from '../../actions';
 import { RefundForm } from '../../forms';
+import { CreateShipmentForm, ShipmentUpdateForm } from '../../tools-forms';
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
   const { id } = await params;
   const order = await getStore()?.getOrder(id);
   if (!order) notFound();
+  const shipment = await getStore()?.getShipmentByOrder(order.id).catch(() => undefined);
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
+  const carrierUrl = shipment ? carrierLink(shipment.carrier, shipment.trackingNumber) : undefined;
   return (
     <>
       <div className="admin-head"><h1>Order {orderRef(order.id)}</h1><span className="admin-pill">{order.status.replace('_', ' ')}</span></div>
@@ -23,6 +28,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             <thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Price</th></tr></thead>
             <tbody>
               {order.items.map((i) => <tr key={i.sku}><td>{i.name}</td><td>{i.sku}</td><td>{i.quantity}</td><td>{money(i.unitPriceCents / 100)}</td></tr>)}
+              {order.taxCents ? <tr><td colSpan={3}>Sales tax{order.shippingAddress ? ` (${order.shippingAddress.state})` : ''}</td><td>{money(order.taxCents / 100)}</td></tr> : null}
               <tr><td colSpan={3}><strong>Total</strong></td><td><strong>{money(order.totalCents / 100)}</strong></td></tr>
               {order.refundedCents ? <tr><td colSpan={3}>Refunded</td><td>−{money(order.refundedCents / 100)}</td></tr> : null}
             </tbody>
@@ -38,10 +44,35 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           </p>
         ) : null}
         <div className="admin-actions" style={{ marginTop: 16 }}>
-          {order.status === 'paid' ? <form action={updateOrderStatusAction.bind(null, order.id, 'fulfilled')}><button className="btn">Mark as fulfilled and email customer</button></form> : null}
+          {order.status === 'paid' ? <form action={updateOrderStatusAction.bind(null, order.id, 'fulfilled')}><button className="btn btn-light">Complete without shipping (pickup)</button></form> : null}
           {order.status === 'pending_payment' ? <form action={updateOrderStatusAction.bind(null, order.id, 'cancelled')}><button className="btn btn-danger">Cancel order</button></form> : null}
         </div>
       </div>
+      {shipment || order.status === 'paid' ? (
+        <div className="admin-card">
+          <h2>Shipment</h2>
+          {shipment ? (
+            <>
+              <div className="shipment-summary">
+                <span className={`admin-pill ${shipment.status === 'exception' ? 'bad' : ''}`}>{STATUS_LABELS[shipment.status]}</span>
+                <span>{shipment.carrier}{shipment.trackingNumber ? ` · ${shipment.trackingNumber}` : ''}</span>
+                {carrierUrl ? <a className="text-link" href={carrierUrl} target="_blank" rel="noopener noreferrer">Carrier page</a> : null}
+                <a className="text-link" href={`${site}${order.locale === 'es' ? '/es' : ''}/track?code=${shipment.code}`} target="_blank" rel="noopener noreferrer">Customer tracking page</a>
+              </div>
+              <ol className="shipment-timeline">
+                {shipment.events.slice().reverse().map((e) => (
+                  <li key={e.id}>
+                    <strong>{STATUS_LABELS[e.status]}</strong>
+                    <small>{new Date(e.occurredAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}{e.location ? ` · ${e.location}` : ''}</small>
+                    {e.note ? <span>{e.note}</span> : null}
+                  </li>
+                ))}
+              </ol>
+              <ShipmentUpdateForm orderId={order.id} shipment={shipment} />
+            </>
+          ) : <CreateShipmentForm orderId={order.id} />}
+        </div>
+      ) : null}
       {order.paypalCaptureId && (order.status === 'paid' || order.status === 'fulfilled' || order.status === 'refunded') ? (
         <div className="admin-card">
           <h2>Refund</h2>

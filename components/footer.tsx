@@ -46,6 +46,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
               <div className="footer-links">
                 <Link href={href('/help')}>{f.center}</Link>
                 <Link href={href('/quote')}>{f.quote}</Link>
+                <Link href={href('/track')}>{f.track}</Link>
                 <Link href={href('/about')}>{f.aboutLink}</Link>
                 <Link href={href('/guides')}>{f.hub}</Link>
                 <Link href={href('/account')}>{f.account}</Link>

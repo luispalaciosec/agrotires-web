@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { orderShippedMail } from '@/lib/server/email';
+import { shipmentMail } from '@/lib/server/email';
 import { rateLimited } from '@/lib/server/http';
-import type { Order } from '@/lib/server/store';
+import type { Order, Shipment } from '@/lib/server/store';
 
 const SUPABASE = { NEXT_PUBLIC_SUPABASE_URL: 'https://x.supabase.co', NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'p', SUPABASE_SECRET_KEY: 's' };
 let n = 0;
@@ -43,9 +43,10 @@ describe('shipped email', () => {
   const order = { id: 'abcdef12-0', email: 'a@b.test', status: 'fulfilled', items: [{ productId: 'p', sku: 'S', name: 'Tire', unitPriceCents: 100, quantity: 2 }], subtotalCents: 200, shippingCents: 0, taxCents: 0, totalCents: 200, currency: 'USD', createdAt: 'now', locale: 'es' } satisfies Order;
 
   it('tells the customer in their language, promising no date', () => {
-    const es = orderShippedMail(order);
+    const shipment: Shipment = { id: 's', orderId: order.id, code: 'AGABC', carrier: 'UPS', status: 'label_created', createdAt: 'now', events: [] };
+    const es = shipmentMail('order_shipped', order, shipment);
     expect(es).toMatchObject({ to: 'a@b.test', subject: '[TEST] Tu pedido fue despachado: ABCDEF12' });
     expect(es.text).toContain('2 x Tire');
-    expect(orderShippedMail({ ...order, locale: 'en' }).subject).toBe('[TEST] Your order has been dispatched: ABCDEF12');
+    expect(shipmentMail('order_shipped', { ...order, locale: 'en' }, shipment).subject).toBe('[TEST] Your order has been dispatched: ABCDEF12');
   });
 });

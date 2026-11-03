@@ -5,7 +5,11 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { isUploadedImage, productImages } from '@/lib/catalog';
 import { adminConfigured, isFullAdmin, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
-import { notifyShipped } from '@/lib/server/email';
+import { brandedHtml, emailEnabled, send } from '@/lib/server/email';
+import { shipOrder, updateShipment } from '@/lib/server/shipments';
+import { fillTemplate, templateDef, templateProblem, type EmailLocale } from '@/lib/email-templates';
+import { CARRIERS, SHIPMENT_STATUSES, type ShipmentStatus } from '@/lib/shipping';
+import { percentToBps, US_STATES } from '@/lib/tax';
 import { importProducts } from '@/lib/server/csv-import';
 import { rateLimited } from '@/lib/server/http';
 import { issueRefund, refundableCents } from '@/lib/server/orders';
@@ -148,9 +152,113 @@ export async function updateOrderStatusAction(id: string, status: OrderStatus) {
   const store = requireStore();
   const order = await store.getOrder(id);
   if (!order || !ORDER_TRANSITIONS[order.status]?.includes(status)) throw new Error('That status change is not allowed');
-  const updated = await store.updateOrder(id, { status });
-  if (status === 'fulfilled') await notifyShipped(updated);
+  await store.updateOrder(id, { status });
   revalidatePath(`/admin/orders/${id}`);
+}
+
+export async function saveTaxRatesAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const rates = [];
+  for (const [state, name] of US_STATES) {
+    const text = String(form.get(`rate_${state}`) ?? '').trim();
+    if (!text) continue;
+    const rateBps = percentToBps(text);
+    if (Number.isNaN(rateBps)) return { error: `${name}: enter a percentage from 0 to 20, such as 6.25.` };
+    rates.push({ state, rateBps, active: form.get(`active_${state}`) === 'on' });
+  }
+  await store.saveTaxRates(rates);
+  revalidatePath('/admin/taxes');
+  refreshStorefront();
+  return { notice: `Saved. ${rates.filter((r) => r.active).length} states charge tax at checkout.` };
+}
+
+const templateFields = (form: FormData) => ({
+  subject_en: String(form.get('subject_en') ?? ''),
+  body_en: String(form.get('body_en') ?? ''),
+  subject_es: String(form.get('subject_es') ?? ''),
+  body_es: String(form.get('body_es') ?? ''),
+});
+
+export async function saveEmailTemplateAction(key: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const def = templateDef(key);
+  if (!def) return { error: 'Unknown email.' };
+  const fields = templateFields(form);
+  const problem = templateProblem(def, fields);
+  if (problem) return { error: problem };
+  try {
+    await requireStore().saveEmailTemplate({ key: def.key, enabled: form.get('enabled') === 'on', ...fields });
+  } catch (e) {
+    console.error('Could not save email template', e);
+    return { error: 'The email could not be saved. If you have not yet, run the migration 0008_admin_tools.sql.' };
+  }
+  revalidatePath('/admin/emails');
+  return { notice: 'Email saved. The next one sent uses this text.' };
+}
+
+export async function resetEmailTemplateAction(key: string): Promise<FormState> {
+  await requireAdmin();
+  const def = templateDef(key);
+  if (!def) return { error: 'Unknown email.' };
+  try {
+    await requireStore().deleteEmailTemplate(def.key);
+  } catch (e) {
+    console.error('Could not reset email template', e);
+    return { error: 'The email could not be restored. Please try again.' };
+  }
+  revalidatePath('/admin/emails');
+  return { notice: 'Original text restored.' };
+}
+
+export async function sendTestEmailAction(key: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const def = templateDef(key);
+  if (!def) return { error: 'Unknown email.' };
+  if (!emailEnabled()) return { error: 'The mailbox is not connected yet.' };
+  const to = String(form.get('to') ?? '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { error: 'Enter a valid email address.' };
+  if (await rateLimited('email-test', 10)) return { error: 'Too many test emails. Try again in a minute.' };
+  const fields = templateFields(form);
+  const problem = templateProblem(def, fields);
+  if (problem) return { error: problem };
+  const lang: EmailLocale = form.get('lang') === 'es' ? 'es' : 'en';
+  const text = fillTemplate(fields[`body_${lang}`], def.sample);
+  const { sent } = await send([{ to, subject: `[TEST] ${fillTemplate(fields[`subject_${lang}`], def.sample)}`, text, html: brandedHtml(text) }]);
+  return sent ? { notice: `Test sent to ${to}.` } : { error: 'The test could not be sent. Check the mailbox settings.' };
+}
+
+const clean = (form: FormData, name: string, max: number) => String(form.get(name) ?? '').trim().slice(0, max) || undefined;
+
+export async function createShipmentAction(orderId: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const order = await store.getOrder(orderId);
+  if (!order || order.status !== 'paid') return { error: 'Only a paid order can be shipped.' };
+  const carrier = String(form.get('carrier') ?? '');
+  if (!CARRIERS.includes(carrier)) return { error: 'Choose a carrier.' };
+  try {
+    await shipOrder(store, order, { carrier, trackingNumber: clean(form, 'trackingNumber', 80) }, form.get('notify') === 'on');
+  } catch (e) {
+    console.error('Could not create shipment', e);
+    return { error: 'The shipment could not be created. If you have not yet, run the migration 0008_admin_tools.sql.' };
+  }
+  revalidatePath(`/admin/orders/${orderId}`);
+  revalidatePath('/admin/shipments');
+  return { notice: 'Shipment created.' };
+}
+
+export async function addShipmentEventAction(orderId: string, shipmentId: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const [order, shipment] = await Promise.all([store.getOrder(orderId), store.getShipmentByOrder(orderId)]);
+  if (!order || !shipment || shipment.id !== shipmentId) return { error: 'Shipment not found.' };
+  const status = String(form.get('status') ?? '') as ShipmentStatus;
+  if (!SHIPMENT_STATUSES.includes(status)) return { error: 'Choose a status.' };
+  await updateShipment(store, order, shipment, { status, location: clean(form, 'location', 120), note: clean(form, 'note', 300) }, form.get('notify') === 'on');
+  revalidatePath(`/admin/orders/${orderId}`);
+  revalidatePath('/admin/shipments');
+  return { notice: 'Update added. The tracking page shows it now.' };
 }
 
 export async function updateQuoteStatusAction(id: string, status: QuoteStatus) {

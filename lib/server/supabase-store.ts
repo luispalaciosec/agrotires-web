@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { TemplateKey } from '../email-templates';
 import type { Locale } from '../i18n';
+import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
-import type { ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -124,6 +126,23 @@ export function orderFromRow(r: OrderRow): Order {
   };
 }
 
+type EventRow = { id: string; status: ShipmentStatus; location: string | null; note: string | null; occurred_at: string };
+type ShipmentRow = { id: string; order_id: string; code: string; carrier: string; tracking_number: string | null; status: ShipmentStatus; created_at: string; shipment_events?: EventRow[] };
+
+export function shipmentFromRow(r: ShipmentRow): Shipment {
+  return {
+    id: r.id,
+    orderId: r.order_id,
+    code: r.code,
+    carrier: r.carrier,
+    trackingNumber: r.tracking_number ?? undefined,
+    status: r.status,
+    createdAt: r.created_at,
+    events: (r.shipment_events ?? []).slice().sort((a, b) => a.occurred_at.localeCompare(b.occurred_at)).map((e): ShipmentEvent => ({ id: e.id, status: e.status, location: e.location ?? undefined, note: e.note ?? undefined, occurredAt: e.occurred_at })),
+  };
+}
+const SHIPMENT_SELECT = '*, shipment_events(id, status, location, note, occurred_at)';
+
 export function quoteFromRow(r: QuoteRow): Quote {
   return {
     id: r.id,
@@ -174,7 +193,7 @@ export class SupabaseStore implements Store {
 
   async createOrder(o: Omit<Order, 'id' | 'status' | 'createdAt'>) {
     const order = unwrap<OrderRow>(await this.db.from('orders').insert({
-      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency, locale: o.locale ?? 'en',
+      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency, locale: o.locale ?? 'en', shipping_address: o.shippingAddress ?? null,
     }).select().single());
     const ids = unwrap<{ id: string; slug: string }[]>(await this.db.from('products').select('id, slug').in('slug', o.items.map((i) => i.productId)));
     const { error } = await this.db.from('order_items').insert(o.items.map((i) => ({
@@ -201,6 +220,55 @@ export class SupabaseStore implements Store {
   async getOrderByCaptureId(captureId: string) {
     const row = unwrap<OrderRow | null>(await this.db.from('orders').select(ORDER_SELECT).eq('paypal_capture_id', captureId).maybeSingle());
     return row ? orderFromRow(row) : undefined;
+  }
+
+  async listTaxRates() {
+    return unwrap<{ state: string; rate_bps: number; active: boolean }[]>(await this.db.from('tax_rates').select('state, rate_bps, active').order('state')).map((r): TaxRate => ({ state: r.state, rateBps: r.rate_bps, active: r.active }));
+  }
+
+  async saveTaxRates(rates: TaxRate[]) {
+    const keep = rates.map((r) => r.state);
+    if (rates.length) unwrap(await this.db.from('tax_rates').upsert(rates.map((r) => ({ state: r.state, rate_bps: r.rateBps, active: r.active, updated_at: new Date().toISOString() }))).select('state'));
+    const stale = unwrap<{ state: string }[]>(await this.db.from('tax_rates').select('state')).map((r) => r.state).filter((s) => !keep.includes(s));
+    if (stale.length) unwrap(await this.db.from('tax_rates').delete().in('state', stale).select('state'));
+  }
+
+  async listEmailTemplates() {
+    return unwrap<(Omit<StoredTemplate, 'updatedAt'> & { updated_at: string })[]>(await this.db.from('email_templates').select()).map(({ updated_at, ...t }): StoredTemplate => ({ ...t, updatedAt: updated_at }));
+  }
+
+  async saveEmailTemplate({ updatedAt: _, ...t }: StoredTemplate) {
+    unwrap(await this.db.from('email_templates').upsert({ ...t, updated_at: new Date().toISOString() }).select('key'));
+  }
+
+  async deleteEmailTemplate(key: TemplateKey) {
+    unwrap(await this.db.from('email_templates').delete().eq('key', key).select('key'));
+  }
+
+  async listShipments() {
+    return unwrap<ShipmentRow[]>(await this.db.from('shipments').select(SHIPMENT_SELECT).order('created_at', { ascending: false }).limit(500)).map(shipmentFromRow);
+  }
+
+  async getShipmentByOrder(orderId: string) {
+    const row = unwrap<ShipmentRow | null>(await this.db.from('shipments').select(SHIPMENT_SELECT).eq('order_id', orderId).maybeSingle());
+    return row ? shipmentFromRow(row) : undefined;
+  }
+
+  async getShipmentByCode(code: string) {
+    const row = unwrap<ShipmentRow | null>(await this.db.from('shipments').select(SHIPMENT_SELECT).eq('code', code).maybeSingle());
+    return row ? shipmentFromRow(row) : undefined;
+  }
+
+  async createShipment(s: { orderId: string; code: string; carrier: string; trackingNumber?: string }) {
+    const row = unwrap<ShipmentRow>(await this.db.from('shipments').insert({ order_id: s.orderId, code: s.code, carrier: s.carrier, tracking_number: s.trackingNumber ?? null }).select().single());
+    unwrap(await this.db.from('shipment_events').insert({ shipment_id: row.id, status: 'label_created' }).select('id'));
+    return (await this.getShipmentByCode(s.code))!;
+  }
+
+  async addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }) {
+    unwrap(await this.db.from('shipment_events').insert({ shipment_id: shipmentId, status: e.status, location: e.location ?? null, note: e.note ?? null }).select('id'));
+    const row = unwrap<ShipmentRow>(await this.db.from('shipments').update({ status: e.status }).eq('id', shipmentId).select(SHIPMENT_SELECT).single());
+    return shipmentFromRow(row);
   }
 
   async restock(items: OrderItem[]) {
@@ -286,7 +354,8 @@ export class SupabaseStore implements Store {
     const languages = await this.db.from('products').select('name_es', { head: true });
     const photos = await this.db.storage.getBucket(PHOTO_BUCKET);
     const refunds = await this.db.from('orders').select('refunded_cents', { head: true });
+    const tools = await this.db.from('shipments').select('id', { head: true });
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error };
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error };
   }
 }

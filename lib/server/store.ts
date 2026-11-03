@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { products as demoProducts, type Product } from '../catalog';
+import type { TemplateContent, TemplateKey } from '../email-templates';
 import type { Locale } from '../i18n';
+import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
 import { SupabaseStore, supabaseConfigured } from './supabase-store';
 
@@ -28,6 +30,10 @@ export type Order = {
   createdAt: string;
 };
 export type OrderPatch = Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress' | 'refundedCents'>>;
+export type TaxRate = { state: string; rateBps: number; active: boolean };
+export type StoredTemplate = TemplateContent & { key: TemplateKey; updatedAt?: string };
+export type ShipmentEvent = { id: string; status: ShipmentStatus; location?: string; note?: string; occurredAt: string };
+export type Shipment = { id: string; orderId: string; code: string; carrier: string; trackingNumber?: string; status: ShipmentStatus; createdAt: string; events: ShipmentEvent[] };
 export type QuoteStatus = 'new' | 'in_progress' | 'answered' | 'closed';
 export type Quote = { id: string; name: string; email: string; phone?: string; deliveryZip?: string; topic: string; product?: string; message: string; status: QuoteStatus; locale?: Locale; createdAt: string };
 export type ShippingClass = 'parcel' | 'freight_quote' | 'pickup';
@@ -64,9 +70,19 @@ export interface Store {
   deleteImage(img: string): Promise<void>;
   reduceStock(items: OrderItem[]): Promise<void>;
   restock(items: OrderItem[]): Promise<void>;
+  listTaxRates(): Promise<TaxRate[]>;
+  saveTaxRates(rates: TaxRate[]): Promise<void>;
+  listEmailTemplates(): Promise<StoredTemplate[]>;
+  saveEmailTemplate(template: StoredTemplate): Promise<void>;
+  deleteEmailTemplate(key: TemplateKey): Promise<void>;
+  listShipments(): Promise<Shipment[]>;
+  getShipmentByOrder(orderId: string): Promise<Shipment | undefined>;
+  getShipmentByCode(code: string): Promise<Shipment | undefined>;
+  createShipment(s: { orderId: string; code: string; carrier: string; trackingNumber?: string }): Promise<Shipment>;
+  addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }): Promise<Shipment>;
 }
 
-type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[] };
+type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[] };
 
 const seedProducts = (): StoredProduct[] => demoProducts.map((p) => ({ ...p, stockQty: null, active: true, shippingClass: 'parcel', compatibilityVerified: false }));
 
@@ -77,9 +93,9 @@ class LocalFileStore implements Store {
   private async read(): Promise<Data> {
     try {
       const data = JSON.parse(await readFile(this.file, 'utf8'));
-      return { ...data, products: data.products ?? seedProducts() };
+      return { taxRates: [], templates: [], shipments: [], ...data, products: data.products ?? seedProducts() };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts() };
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [] };
       throw e;
     }
   }
@@ -183,6 +199,64 @@ class LocalFileStore implements Store {
 
   async deleteImage(img: string) {
     if (img.startsWith('/uploads/')) await rm(path.join(process.cwd(), 'public', 'uploads', path.basename(img)), { force: true });
+  }
+
+  async listTaxRates() {
+    return (await this.read()).taxRates;
+  }
+
+  saveTaxRates(rates: TaxRate[]) {
+    return this.write((d) => {
+      d.taxRates = rates;
+    });
+  }
+
+  async listEmailTemplates() {
+    return (await this.read()).templates;
+  }
+
+  saveEmailTemplate(template: StoredTemplate) {
+    return this.write((d) => {
+      d.templates = [...d.templates.filter((t) => t.key !== template.key), { ...template, updatedAt: new Date().toISOString() }];
+    });
+  }
+
+  deleteEmailTemplate(key: TemplateKey) {
+    return this.write((d) => {
+      d.templates = d.templates.filter((t) => t.key !== key);
+    });
+  }
+
+  async listShipments() {
+    return (await this.read()).shipments.slice().reverse();
+  }
+
+  async getShipmentByOrder(orderId: string) {
+    return (await this.read()).shipments.find((s) => s.orderId === orderId);
+  }
+
+  async getShipmentByCode(code: string) {
+    return (await this.read()).shipments.find((s) => s.code === code);
+  }
+
+  createShipment(s: { orderId: string; code: string; carrier: string; trackingNumber?: string }) {
+    return this.write((d) => {
+      if (d.shipments.some((x) => x.orderId === s.orderId)) throw new Error('This order already has a shipment');
+      const now = new Date().toISOString();
+      const shipment: Shipment = { ...s, id: randomUUID(), status: 'label_created', createdAt: now, events: [{ id: randomUUID(), status: 'label_created', occurredAt: now }] };
+      d.shipments.push(shipment);
+      return shipment;
+    });
+  }
+
+  addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }) {
+    return this.write((d) => {
+      const shipment = d.shipments.find((s) => s.id === shipmentId);
+      if (!shipment) throw new Error('Shipment not found');
+      shipment.events.push({ ...e, id: randomUUID(), occurredAt: new Date().toISOString() });
+      shipment.status = e.status;
+      return shipment;
+    });
   }
 
   restock(items: OrderItem[]) {
