@@ -5,7 +5,7 @@ import { getStore } from '@/lib/server/store';
 
 const schema = z.object({ email: z.string().trim().email().max(200), locale: z.enum(LOCALES).optional(), website: z.string().optional() });
 
-// Asking again counts as choosing to hear from us again, so it also clears an earlier opt out.
+// Nothing proves who typed the address, so an earlier opt out always stays in force.
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   if (await rateLimited(`newsletter:${clientIp(req)}`, 5)) return json({ error: 'Too many requests' }, 429);

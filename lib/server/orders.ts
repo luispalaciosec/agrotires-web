@@ -79,8 +79,14 @@ export async function settleCapture(store: Store, stale: Order, capture: PayPalC
   }
   const amountMatches = capture.amount.currency_code === order.currency && valueToCents(capture.amount.value) === order.totalCents;
   if (capture.status === 'COMPLETED' && amountMatches) {
-    await applySale(store, order.items, orderRef(order.id));
-    const paid = await store.updateOrder(order.id, { status: 'paid', paypalCaptureId: capture.id, shippingAddress });
+    if (order.status === 'cancelled') {
+      // The money arrived after the team cancelled: someone must decide, nothing ships by itself.
+      await notifyReview(order, `capture ${capture.id} completed on a cancelled order`);
+      return store.updateOrder(order.id, { paypalCaptureId: capture.id });
+    }
+    const paid = await store.claimOrderPaid(order.id, { paypalCaptureId: capture.id, shippingAddress });
+    if (!paid) return (await store.getOrder(order.id)) ?? order;
+    await applySale(store, paid.items, orderRef(paid.id)).catch((e) => console.error(`Order ${paid.id} is paid but stock was not updated`, e));
     await notifyPaid(paid);
     return paid;
   }

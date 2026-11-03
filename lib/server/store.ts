@@ -89,6 +89,7 @@ export interface Store {
   getOrderByPayPalId(paypalOrderId: string): Promise<Order | undefined>;
   getOrderByCaptureId(captureId: string): Promise<Order | undefined>;
   updateOrder(id: string, patch: OrderPatch): Promise<Order>;
+  claimOrderPaid(id: string, patch: OrderPatch): Promise<Order | undefined>;
   listOrders(): Promise<Order[]>;
   listQuotes(): Promise<Quote[]>;
   getQuote(id: string): Promise<Quote | undefined>;
@@ -234,6 +235,15 @@ class LocalFileStore implements Store {
     });
   }
 
+  claimOrderPaid(id: string, patch: OrderPatch) {
+    return this.write((d) => {
+      const order = d.orders.find((o) => o.id === id);
+      if (!order || !['pending_payment', 'payment_failed'].includes(order.status)) return undefined;
+      Object.assign(order, patch, { status: 'paid' });
+      return order;
+    });
+  }
+
   async listOrders() {
     return (await this.read()).orders.slice().reverse();
   }
@@ -361,7 +371,6 @@ class LocalFileStore implements Store {
   addSubscriber(email: string, locale: string) {
     const lower = email.toLowerCase();
     return this.write((d) => {
-      d.optouts = d.optouts.filter((e) => e !== lower);
       if (!d.subscribers.some((s) => s.email === lower)) d.subscribers.push({ email: lower, locale, createdAt: new Date().toISOString() });
     });
   }

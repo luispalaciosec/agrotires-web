@@ -1,10 +1,10 @@
-import { requireAdmin } from '@/lib/server/admin-auth';
+import { requireFullAdmin } from '@/lib/server/admin-auth';
 import { csvResponse } from '@/lib/server/csv';
 import { orderRef } from '@/lib/server/email';
 import { getStore } from '@/lib/server/store';
 
 export async function GET() {
-  await requireAdmin();
+  await requireFullAdmin();
   const orders = (await getStore()?.listOrders()) ?? [];
   const usd = (cents: number) => (cents / 100).toFixed(2);
   return csvResponse('agrotires-orders.csv', [

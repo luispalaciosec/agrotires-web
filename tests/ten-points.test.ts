@@ -6,6 +6,8 @@ import { POST as newsletter } from '@/app/api/newsletter/route';
 import { toSpanish } from '@/lib/admin-i18n';
 import { browserProducts } from '@/lib/products';
 import { purchaseOrderMail, send } from '@/lib/server/email';
+import { settleCapture } from '@/lib/server/orders';
+import type { PayPalCapture } from '@/lib/server/paypal';
 import { remainingToRestock, restockItems } from '@/lib/server/operations';
 import { getStore, type Order, type PurchaseOrder } from '@/lib/server/store';
 
@@ -35,13 +37,13 @@ describe('newsletter', () => {
     expect(list[0].locale).toBe('es');
   });
 
-  it('opted-out people leave the list, and signing up again brings them back', async () => {
+  it('opted-out people leave the list, and a sign-up by anyone cannot bring them back', async () => {
     const store = getStore()!;
     await store.optOut('ana@example.test');
     expect(await store.listSubscribers()).toEqual([]);
     await newsletter(post({ email: 'ana@example.test' }));
-    expect(await store.isOptedOut('ana@example.test')).toBe(false);
-    expect(await store.listSubscribers()).toHaveLength(1);
+    expect(await store.isOptedOut('ana@example.test')).toBe(true);
+    expect(await store.listSubscribers()).toEqual([]);
   });
 });
 
@@ -131,6 +133,31 @@ describe('supplier orders', () => {
   it('sends through the same mailbox', async () => {
     Object.assign(process.env, { SMTP_USER: 'contact@agrotiresusa.com', SMTP_PASS: 'x' });
     expect((await send([purchaseOrderMail(po)])).sent).toBe(1);
+  });
+});
+
+describe('settling a payment', () => {
+  const capture = (total: string) => ({ id: 'C1', status: 'COMPLETED', amount: { currency_code: 'USD', value: total } }) as PayPalCapture;
+  const item = { productId: 'tire-r1', sku: 'S1', name: 'Tire', unitPriceCents: 100, quantity: 1 };
+  const stock = async () => (await getStore()!.listProducts()).find((p) => p.id === 'tire-r1')!.stockQty;
+  const order = async () => getStore()!.createOrder({ items: [item], email: 'a@b.test', subtotalCents: 100, shippingCents: 0, taxCents: 0, totalCents: 100, currency: 'USD' });
+
+  it('takes stock once, however many arrive at the same time', async () => {
+    const store = getStore()!;
+    await store.saveProducts((await store.listProducts()).map((p) => (p.id === 'tire-r1' ? { ...p, stockQty: 10 } : p)));
+    const o = await order();
+    await Promise.all(Array.from({ length: 5 }, () => settleCapture(store, o, capture('1.00'))));
+    expect(await stock()).toBe(9);
+    expect((await store.getOrder(o.id))!.status).toBe('paid');
+  });
+
+  it('a cancelled order does not become paid', async () => {
+    const store = getStore()!;
+    const o = await order();
+    await store.updateOrder(o.id, { status: 'cancelled' });
+    const before = await stock();
+    expect((await settleCapture(store, o, capture('1.00'))).status).toBe('cancelled');
+    expect(await stock()).toBe(before);
   });
 });
 

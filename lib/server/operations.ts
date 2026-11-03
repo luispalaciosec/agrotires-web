@@ -81,7 +81,8 @@ export async function requestReturn(store: Store, order: Order, input: { items: 
   if (open) return { ok: false as const, error: 'open' as const };
   for (const item of input.items) {
     const bought = order.items.find((i) => i.sku === item.sku);
-    if (!bought || item.quantity < 1 || item.quantity > bought.quantity) return { ok: false as const, error: 'invalid' as const };
+    const asked = input.items.filter((i) => i.sku === item.sku).reduce((n, i) => n + i.quantity, 0);
+    if (!bought || item.quantity < 1 || asked > bought.quantity) return { ok: false as const, error: 'invalid' as const };
   }
   if (!input.items.length) return { ok: false as const, error: 'invalid' as const };
   const created = await store.createReturn({ orderId: order.id, ...input });

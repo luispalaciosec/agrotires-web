@@ -29,7 +29,7 @@ export async function runReminders(store: Store, now = Date.now()) {
     if (sold.some((s) => s.email.toLowerCase() === o.email.toLowerCase() && s.createdAt > o.createdAt)) continue;
     const token = o.payToken ?? newToken();
     if (!o.payToken) await store.updateOrder(o.id, { payToken: token, payExpiresAt: new Date(now + 7 * DAY).toISOString() });
-    const sent = await once(`cart:${o.id}`, 'cart_reminder', o.email, o.locale, { items: o.items.map((i) => `${i.quantity} x ${i.name}`).join('\n'), pay_url: `${site}${o.locale === 'es' ? '/es' : ''}/pay/${token}` });
+    const sent = await once(`cart:${o.email.toLowerCase()}:${Math.floor(now / (7 * DAY))}`, 'cart_reminder', o.email, o.locale, { items: o.items.map((i) => `${i.quantity} x ${i.name}`).join('\n'), pay_url: `${site}${o.locale === 'es' ? '/es' : ''}/pay/${token}` });
     if (sent) result.carts += 1;
   }
 

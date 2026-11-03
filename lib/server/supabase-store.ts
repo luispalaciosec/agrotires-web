@@ -286,7 +286,6 @@ export class SupabaseStore implements Store {
 
   async addSubscriber(email: string, locale: string) {
     const lower = email.toLowerCase();
-    unwrap(await this.db.from('email_optouts').delete().eq('email', lower).select('email'));
     unwrap(await this.db.from('newsletter_subscribers').upsert({ email: lower, locale }, { onConflict: 'email', ignoreDuplicates: true }).select('email'));
   }
 
@@ -602,6 +601,17 @@ export class SupabaseStore implements Store {
       ...(patch.restocked ? { restocked: patch.restocked } : {}),
     }).eq('id', id).select(ORDER_SELECT).single());
     return orderFromRow(row);
+  }
+
+  async claimOrderPaid(id: string, patch: OrderPatch) {
+    // Only an unpaid order changes, so parallel captures and webhooks settle it once.
+    const rows = unwrap<OrderRow[]>(await this.db.from('orders').update({
+      updated_at: new Date().toISOString(),
+      status: 'paid',
+      ...(patch.paypalCaptureId ? { paypal_capture_id: patch.paypalCaptureId } : {}),
+      ...(patch.shippingAddress ? { shipping_address: patch.shippingAddress } : {}),
+    }).eq('id', id).in('status', ['pending_payment', 'payment_failed']).select(ORDER_SELECT));
+    return rows[0] ? orderFromRow(rows[0]) : undefined;
   }
 
   async listOrders() {

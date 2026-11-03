@@ -232,6 +232,7 @@ export async function saveTaxRatesAction(_: FormState, form: FormData): Promise<
 
 export async function createPayLinkAction(quoteId: string, _: FormState, form: FormData): Promise<FormState> {
   await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can do this.' };
   const store = requireStore();
   const quote = await store.getQuote(quoteId);
   if (!quote) return { error: 'Quote not found.' };
@@ -278,6 +279,7 @@ export async function saveB2bDecisionAction(profileId: string, _: FormState, for
 
 export async function markInvoicePaidAction(orderId: string) {
   await requireAdmin();
+  if (!(await isFullAdmin())) return;
   const store = requireStore();
   const order = await store.getOrder(orderId);
   if (!order?.invoiceDueAt || order.invoicePaidAt) return;
@@ -356,6 +358,7 @@ const templateFields = (form: FormData) => ({
 
 export async function saveEmailTemplateAction(key: string, _: FormState, form: FormData): Promise<FormState> {
   await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can do this.' };
   const def = templateDef(key);
   if (!def) return { error: 'Unknown email.' };
   const fields = templateFields(form);
@@ -374,6 +377,7 @@ export async function saveEmailTemplateAction(key: string, _: FormState, form: F
 
 export async function resetEmailTemplateAction(key: string): Promise<FormState> {
   await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can do this.' };
   const def = templateDef(key);
   if (!def) return { error: 'Unknown email.' };
   try {
@@ -389,6 +393,7 @@ export async function resetEmailTemplateAction(key: string): Promise<FormState> 
 
 export async function sendTestEmailAction(key: string, _: FormState, form: FormData): Promise<FormState> {
   await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can do this.' };
   const def = templateDef(key);
   if (!def) return { error: 'Unknown email.' };
   if (!emailEnabled()) return { error: 'The mailbox is not connected yet.' };
@@ -401,6 +406,7 @@ export async function sendTestEmailAction(key: string, _: FormState, form: FormD
   const lang: EmailLocale = form.get('lang') === 'es' ? 'es' : 'en';
   const text = fillTemplate(fields[`body_${lang}`], def.sample);
   const { sent } = await send([{ to, subject: `[TEST] ${fillTemplate(fields[`subject_${lang}`], def.sample)}`, text, html: brandedHtml(text) }]);
+  if (sent) await audit('Sent test email', key, to);
   return sent ? { notice: `Test sent to ${to}.` } : { error: 'The test could not be sent. Check the mailbox settings.' };
 }
 

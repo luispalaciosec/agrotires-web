@@ -20,6 +20,7 @@ export async function POST(req: Request) {
   const order = await store.getOrderByPayPalId(parsed.data.paypalOrderId);
   if (!order) return json({ error: 'Order not found' }, 404);
   if (order.status === 'paid') return json({ orderId: order.id, status: order.status });
+  if (order.status === 'cancelled' || (order.payExpiresAt && new Date(order.payExpiresAt).getTime() < Date.now())) return json({ error: 'This order can no longer be paid' }, 409);
 
   try {
     const capture = await capturePayPalOrder(parsed.data.paypalOrderId, order.id);
