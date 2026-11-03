@@ -67,3 +67,4 @@
 .mobile-panel .language-switch a{display:inline-block;border:1px solid var(--border);border-bottom:1px solid var(--border);border-radius:8px;padding:6px 11px;font-size:12px;opacity:1}
 .mobile-panel .language-switch a.language-active{background:var(--forest);border-color:var(--forest);color:#fff}
 .uploaded-photo{object-fit:contain!important}
+.product-image-box .uploaded-photo{position:absolute;inset:0}
