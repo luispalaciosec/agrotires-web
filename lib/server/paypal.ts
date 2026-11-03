@@ -82,6 +82,20 @@ export async function capturePayPalOrder(paypalOrderId: string, ourOrderId: stri
   return { ...capture, shipping: shippingFrom(unit.shipping) };
 }
 
+export type PayPalRefund = {
+  id: string;
+  status: string;
+  amount?: { value: string };
+  seller_payable_breakdown?: { total_refunded_amount?: { value: string } };
+  links?: { rel: string; href: string }[];
+  custom_id?: string;
+};
+
+// requestId makes a retry return the first answer instead of refunding again.
+export function refundPayPalCapture(captureId: string, cents: number, requestId: string) {
+  return authed<PayPalRefund>(`/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, { amount: { currency_code: 'USD', value: centsToValue(cents) } }, requestId);
+}
+
 export async function verifyWebhook(headers: Headers, event: unknown) {
   const webhookId = process.env.PAYPAL_WEBHOOK_ID;
   if (!webhookId) return false;

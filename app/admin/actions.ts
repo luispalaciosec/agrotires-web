@@ -7,7 +7,10 @@ import { isUploadedImage, productImages } from '@/lib/catalog';
 import { adminConfigured, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
 import { importProducts } from '@/lib/server/csv-import';
 import { rateLimited } from '@/lib/server/http';
+import { issueRefund, refundableCents } from '@/lib/server/orders';
+import { paymentsEnabled } from '@/lib/server/paypal';
 import { checkPhoto, keptPhotos } from '@/lib/server/photo-upload';
+import { valueToCents } from '@/lib/server/pricing';
 import { parseProduct, type ProductInput } from '@/lib/server/product-input';
 import { getStore, type OrderStatus, type QuoteStatus, type ShippingClass, type Store } from '@/lib/server/store';
 
@@ -110,6 +113,27 @@ export async function importProductsAction(_: FormState, form: FormData): Promis
   await store.saveProducts(result.products);
   refreshStorefront();
   return { notice: `Import complete: ${result.created} created, ${result.updated} updated.` };
+}
+
+export async function refundOrderAction(id: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  if (!paymentsEnabled()) return { error: 'PayPal is not connected, so refunds are not available.' };
+  const order = await store.getOrder(id);
+  if (!order) return { error: 'Order not found.' };
+  const cents = valueToCents(String(form.get('amount') || '').trim());
+  const restock = form.get('restock') === 'on';
+  if (restock && cents !== refundableCents(order) && Number(form.get('expected')) === (order.refundedCents ?? 0)) return { error: 'Items can return to stock only when refunding everything that is left.' };
+  const result = await issueRefund(store, { ...order, refundedCents: Number(form.get('expected')) }, cents);
+  revalidatePath(`/admin/orders/${id}`);
+  revalidatePath('/admin/orders');
+  if (!result.ok) return { error: result.error };
+  if (restock) {
+    await store.restock(order.items);
+    refreshStorefront();
+  }
+  const amount = (cents / 100).toFixed(2);
+  return { notice: result.pending ? `PayPal is processing the $${amount} refund.` : `Refunded $${amount}.${restock ? ' Items returned to stock.' : ''}` };
 }
 
 const ORDER_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {

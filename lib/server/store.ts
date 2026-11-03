@@ -22,10 +22,12 @@ export type Order = {
   currency: 'USD';
   locale?: Locale;
   shippingAddress?: ShippingAddress;
+  refundedCents?: number;
   paypalOrderId?: string;
   paypalCaptureId?: string;
   createdAt: string;
 };
+export type OrderPatch = Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress' | 'refundedCents'>>;
 export type QuoteStatus = 'new' | 'in_progress' | 'answered' | 'closed';
 export type Quote = { id: string; name: string; email: string; phone?: string; deliveryZip?: string; topic: string; product?: string; message: string; status: QuoteStatus; locale?: Locale; createdAt: string };
 export type ShippingClass = 'parcel' | 'freight_quote' | 'pickup';
@@ -49,7 +51,8 @@ export interface Store {
   createOrder(o: Omit<Order, 'id' | 'status' | 'createdAt'>): Promise<Order>;
   getOrder(id: string): Promise<Order | undefined>;
   getOrderByPayPalId(paypalOrderId: string): Promise<Order | undefined>;
-  updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress'>>): Promise<Order>;
+  getOrderByCaptureId(captureId: string): Promise<Order | undefined>;
+  updateOrder(id: string, patch: OrderPatch): Promise<Order>;
   listOrders(): Promise<Order[]>;
   listQuotes(): Promise<Quote[]>;
   getQuote(id: string): Promise<Quote | undefined>;
@@ -60,6 +63,7 @@ export interface Store {
   uploadImage(bytes: Uint8Array, type: PhotoType): Promise<string>;
   deleteImage(img: string): Promise<void>;
   reduceStock(items: OrderItem[]): Promise<void>;
+  restock(items: OrderItem[]): Promise<void>;
 }
 
 type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[] };
@@ -119,7 +123,7 @@ class LocalFileStore implements Store {
     return (await this.read()).orders.find((o) => o.paypalOrderId === paypalOrderId);
   }
 
-  updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress'>>) {
+  updateOrder(id: string, patch: OrderPatch) {
     return this.write((d) => {
       const order = d.orders.find((o) => o.id === id);
       if (!order) throw new Error('Order not found');
@@ -179,6 +183,19 @@ class LocalFileStore implements Store {
 
   async deleteImage(img: string) {
     if (img.startsWith('/uploads/')) await rm(path.join(process.cwd(), 'public', 'uploads', path.basename(img)), { force: true });
+  }
+
+  restock(items: OrderItem[]) {
+    return this.write((d) => {
+      for (const item of items) {
+        const p = d.products.find((x) => x.id === item.productId);
+        if (p && p.stockQty !== null) p.stockQty += item.quantity;
+      }
+    });
+  }
+
+  async getOrderByCaptureId(captureId: string) {
+    return (await this.read()).orders.find((o) => o.paypalCaptureId === captureId);
   }
 
   reduceStock(items: OrderItem[]) {

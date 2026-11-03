@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Locale } from '../i18n';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
-import type { ShippingAddress, Order, OrderItem, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -97,7 +97,7 @@ export function productToRow(p: StoredProduct): ProductRow {
 type ItemRow = { sku: string; name: string; unit_price_cents: number; quantity: number; products: { slug: string } | null };
 type OrderRow = {
   id: string; email: string; status: Order['status']; subtotal_cents: number; shipping_cents: number; tax_cents: number; total_cents: number;
-  locale: Locale; shipping_address?: ShippingAddress | null; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
+  locale: Locale; shipping_address?: ShippingAddress | null; refunded_cents?: number; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
 };
 type QuoteRow = {
   id: string; name: string; email: string; phone: string | null; delivery_zip: string | null; topic: string; product_name: string | null;
@@ -117,6 +117,7 @@ export function orderFromRow(r: OrderRow): Order {
     currency: 'USD',
     locale: r.locale,
     shippingAddress: r.shipping_address ?? undefined,
+    refundedCents: r.refunded_cents ?? 0,
     paypalOrderId: r.paypal_order_id ?? undefined,
     paypalCaptureId: r.paypal_capture_id ?? undefined,
     createdAt: r.created_at,
@@ -188,13 +189,23 @@ export class SupabaseStore implements Store {
     return row ? orderFromRow(row) : undefined;
   }
 
-  async updateOrder(id: string, patch: Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress'>>) {
+  async getOrderByCaptureId(captureId: string) {
+    const row = unwrap<OrderRow | null>(await this.db.from('orders').select(ORDER_SELECT).eq('paypal_capture_id', captureId).maybeSingle());
+    return row ? orderFromRow(row) : undefined;
+  }
+
+  async restock(items: OrderItem[]) {
+    unwrap(await this.db.rpc('restock', { items: items.map((i) => ({ slug: i.productId, quantity: i.quantity })) }));
+  }
+
+  async updateOrder(id: string, patch: OrderPatch) {
     const row = unwrap<OrderRow>(await this.db.from('orders').update({
       updated_at: new Date().toISOString(),
       ...(patch.status ? { status: patch.status } : {}),
       ...(patch.paypalOrderId ? { paypal_order_id: patch.paypalOrderId } : {}),
       ...(patch.paypalCaptureId ? { paypal_capture_id: patch.paypalCaptureId } : {}),
       ...(patch.shippingAddress ? { shipping_address: patch.shippingAddress } : {}),
+      ...(patch.refundedCents !== undefined ? { refunded_cents: patch.refundedCents } : {}),
     }).eq('id', id).select(ORDER_SELECT).single());
     return orderFromRow(row);
   }
@@ -265,6 +276,7 @@ export class SupabaseStore implements Store {
     const stock = await this.db.rpc('reduce_stock', { items: [] });
     const languages = await this.db.from('products').select('name_es', { head: true });
     const photos = await this.db.storage.getBucket(PHOTO_BUCKET);
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error };
+    const refunds = await this.db.from('orders').select('refunded_cents', { head: true });
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error };
   }
 }

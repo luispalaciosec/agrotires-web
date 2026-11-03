@@ -3,7 +3,7 @@
 import { startTransition, useActionState, useState, type FormEvent } from 'react';
 import { PRODUCT_IMAGES, categories, imageSrc, isUploadedImage, productImages } from '@/lib/catalog';
 import type { StoredProduct } from '@/lib/server/store';
-import { deleteProductAction, importProductsAction, loginAction, saveProductAction, type FormState } from './actions';
+import { deleteProductAction, importProductsAction, loginAction, refundOrderAction, saveProductAction, type FormState } from './actions';
 
 const empty: FormState = {};
 
@@ -212,6 +212,33 @@ export function ProductForm({ product }: { product?: StoredProduct }) {
         </div>
       </div>
       <div className="admin-actions"><button className="btn" disabled={pending || preparing}>Save product</button></div>
+    </form>
+  );
+}
+
+export function RefundForm({ orderId, refundableCents, refundedCents }: { orderId: string; refundableCents: number; refundedCents: number }) {
+  const [state, action, pending] = useActionState(refundOrderAction.bind(null, orderId), empty);
+  const left = (refundableCents / 100).toFixed(2);
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    if (!confirm(`Refund $${String(data.get('amount')).trim()} to the customer through PayPal? This cannot be undone.`)) return;
+    startTransition(() => action(data));
+  };
+  return (
+    <form onSubmit={onSubmit}>
+      <Messages state={state} />
+      {refundableCents > 0 ? (
+        <>
+          <input key={refundedCents} type="hidden" name="expected" value={refundedCents} />
+          <div className="field">
+            <label className="field-label" htmlFor="amount">Amount to refund (USD), up to ${left}</label>
+            <input key={left} className="text-input" id="amount" name="amount" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" defaultValue={left} required />
+          </div>
+          <label className="admin-check"><input type="checkbox" name="restock" /> Return all items to stock (only when refunding everything that is left)</label>
+          <div className="admin-actions" style={{ marginTop: 16 }}><button className="btn btn-danger" disabled={pending}>{pending ? 'Refunding…' : 'Refund through PayPal'}</button></div>
+        </>
+      ) : <p className="muted" style={{ margin: 0 }}>This order has been fully refunded.</p>}
     </form>
   );
 }

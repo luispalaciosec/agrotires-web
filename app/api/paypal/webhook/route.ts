@@ -1,10 +1,13 @@
 import { json, readJson } from '@/lib/server/http';
-import { settleCapture } from '@/lib/server/orders';
-import { paymentsEnabled, verifyWebhook, type PayPalCapture } from '@/lib/server/paypal';
+import { recordRefund, refundedTotalCents, settleCapture } from '@/lib/server/orders';
+import { paymentsEnabled, verifyWebhook, type PayPalCapture, type PayPalRefund } from '@/lib/server/paypal';
 import { valueToCents } from '@/lib/server/pricing';
 import { getStore } from '@/lib/server/store';
 
-type Resource = PayPalCapture & { custom_id?: string };
+type Resource = PayPalCapture & PayPalRefund;
+
+// A refund made inside PayPal may not carry our order id, but it always links to its capture.
+const captureIdOf = (r: Resource) => r.links?.find((l) => l.rel === 'up')?.href.match(/\/captures\/([^/?]+)/)?.[1];
 
 export async function POST(req: Request) {
   const store = getStore();
@@ -21,16 +24,20 @@ export async function POST(req: Request) {
 
   const event = body.data as { event_type?: string; resource?: Resource };
   const resource = event.resource;
-  const order = resource?.custom_id ? await store.getOrder(resource.custom_id) : undefined;
+  let order = resource?.custom_id ? await store.getOrder(resource.custom_id) : undefined;
+  const captureId = resource && captureIdOf(resource);
+  if (!order && captureId) order = await store.getOrderByCaptureId(captureId);
   if (!resource || !order) return json({ ok: true });
 
   if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
     await settleCapture(store, order, resource);
   } else if (event.event_type === 'PAYMENT.CAPTURE.DENIED' && order.status === 'pending_payment') {
     await store.updateOrder(order.id, { status: 'payment_failed' });
-  } else if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED' && valueToCents(resource.amount.value) === order.totalCents) {
-    // Partial refunds keep the order as paid; staff handles those by hand.
-    await store.updateOrder(order.id, { status: 'refunded' });
+  } else if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') {
+    const total = refundedTotalCents(resource);
+    if (!Number.isNaN(total)) await recordRefund(store, order, total);
+    // Without PayPal's running total, only a refund of the whole order is certain.
+    else if (valueToCents(resource.amount.value) === order.totalCents) await recordRefund(store, order, order.totalCents);
   }
   return json({ ok: true });
 }

@@ -2,8 +2,11 @@ import { notFound } from 'next/navigation';
 import { money } from '@/lib/catalog';
 import { requireAdmin } from '@/lib/server/admin-auth';
 import { orderRef } from '@/lib/server/email';
+import { refundableCents } from '@/lib/server/orders';
+import { paymentsEnabled } from '@/lib/server/paypal';
 import { getStore } from '@/lib/server/store';
 import { updateOrderStatusAction } from '../../actions';
+import { RefundForm } from '../../forms';
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -21,6 +24,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             <tbody>
               {order.items.map((i) => <tr key={i.sku}><td>{i.name}</td><td>{i.sku}</td><td>{i.quantity}</td><td>{money(i.unitPriceCents / 100)}</td></tr>)}
               <tr><td colSpan={3}><strong>Total</strong></td><td><strong>{money(order.totalCents / 100)}</strong></td></tr>
+              {order.refundedCents ? <tr><td colSpan={3}>Refunded</td><td>−{money(order.refundedCents / 100)}</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -38,6 +42,12 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           {order.status === 'pending_payment' ? <form action={updateOrderStatusAction.bind(null, order.id, 'cancelled')}><button className="btn btn-danger">Cancel order</button></form> : null}
         </div>
       </div>
+      {order.paypalCaptureId && (order.status === 'paid' || order.status === 'fulfilled' || order.status === 'refunded') ? (
+        <div className="admin-card">
+          <h2>Refund</h2>
+          {paymentsEnabled() ? <RefundForm orderId={order.id} refundableCents={refundableCents(order)} refundedCents={order.refundedCents ?? 0} /> : <p className="muted" style={{ margin: 0 }}>Refunds are available once PayPal is connected.</p>}
+        </div>
+      ) : null}
     </>
   );
 }

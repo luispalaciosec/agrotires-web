@@ -113,6 +113,28 @@ export function orderReviewMail(order: Order, detail: string): Mail {
   };
 }
 
+export function orderRefundMail(order: Order, cents: number): Mail {
+  const es = order.locale === 'es';
+  const ref = orderRef(order.id);
+  const total = money(order.totalCents / 100);
+  const refunded = money((order.refundedCents ?? 0) / 100);
+  return {
+    to: order.email,
+    replyTo: teamEmail(),
+    subject: `${testPrefix()}${es ? 'Reembolso de tu pedido' : 'Refund for your order'}: ${ref}`,
+    text: [
+      es ? 'Hicimos un reembolso de tu pedido en AGROTIRES a través de PayPal.' : 'We issued a refund for your AGROTIRES order through PayPal.',
+      '',
+      `${es ? 'Referencia del pedido' : 'Order reference'}: ${ref}`,
+      `${es ? 'Monto reembolsado' : 'Amount refunded'}: ${money(cents / 100)} USD`,
+      `${es ? 'Total reembolsado del pedido' : 'Total refunded on this order'}: ${refunded} ${es ? 'de' : 'of'} ${total} USD`,
+      '',
+      es ? 'PayPal te avisará cuando el dinero esté disponible. Puedes responder a este correo si tienes preguntas.' : 'PayPal will let you know when the money is available. You can reply to this email with any questions.',
+    ].join('\n'),
+  };
+}
+
 export const notifyQuote = (q: Quote) => send([quoteTeamMail(q)]);
 export const notifyPaid = (order: Order) => send([orderCustomerMail(order), orderTeamMail(order)]);
+export const notifyRefund = (order: Order, cents: number) => send([orderRefundMail(order, cents)]);
 export const notifyReview = (order: Order, detail: string) => send([orderReviewMail(order, detail)]);
