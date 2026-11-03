@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { catHref } from '@/lib/catalog';
 import { useSearchNav } from './chrome';
+import { MachineSearch } from './machine-search';
 import { useStore } from './store';
 import { Icon } from './ui';
 
@@ -18,8 +19,10 @@ export function FinderWidget({ initialTab = 'tire' }: { initialTab?: FinderTab }
   const [tab, setTab] = useState<FinderTab>(initialTab);
   const router = useRouter();
   const navigateSearch = useSearchNav();
-  const { t, href } = useStore();
+  const { t, href, products } = useStore();
   const f = t.finder;
+  // With no verified machines yet, this tab keeps the plain search.
+  const machineData = tab === 'machine' && products.some((p) => p.fitment?.length);
   const options = tab === 'tire' ? f.optTire : tab === 'part' ? f.optPart : f.optMachine;
   const TABS: [FinderTab, string][] = [['tire', f.tabTire], ['part', f.tabPart], ['machine', f.tabMachine]];
 
@@ -45,7 +48,7 @@ export function FinderWidget({ initialTab = 'tire' }: { initialTab?: FinderTab }
           <button key={id} className={`tab ${tab === id ? 'active' : ''}`} type="button" onClick={() => setTab(id)} role="tab" aria-selected={tab === id}>{label}</button>
         ))}
       </div>
-      <form id="finder-form" key={tab} onSubmit={onSubmit}>
+      {machineData ? <MachineSearch /> : <form id="finder-form" key={tab} onSubmit={onSubmit}>
         <div className="field">
           <label className="field-label" htmlFor="finder-cat">{tab === 'tire' ? f.catTire : tab === 'part' ? f.catPart : f.catMachine}</label>
           <select name="category" className="select-input" id="finder-cat">
@@ -58,7 +61,7 @@ export function FinderWidget({ initialTab = 'tire' }: { initialTab?: FinderTab }
         </div>
         <button className="btn btn-block" type="submit">{f.submit} <Icon name="arrow" size="sm" /></button>
         <p className="fine-print">{f.fine}</p>
-      </form>
+      </form>}
     </div>
   );
 }

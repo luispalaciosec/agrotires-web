@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { products as demoProducts, type Product } from '../catalog';
 import type { TemplateContent, TemplateKey } from '../email-templates';
+import type { Fitment } from '../fitment';
 import type { Locale } from '../i18n';
 import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
@@ -25,12 +26,17 @@ export type Order = {
   locale?: Locale;
   shippingAddress?: ShippingAddress;
   refundedCents?: number;
+  profileId?: string;
   paypalOrderId?: string;
   paypalCaptureId?: string;
   createdAt: string;
 };
 export type OrderPatch = Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress' | 'refundedCents'>>;
-export type TaxRate = { state: string; rateBps: number; active: boolean };
+export type TaxRate = { state: string; rateBps: number; active: boolean; taxShipping?: boolean };
+export type TaxZipRate = { zip: string; rateBps: number; region?: string };
+export type ShippingZone = { id: string; name: string; states: string[]; baseCents: number; perLbCents: number; freeOverCents?: number; active: boolean };
+export type ProductFitment = Fitment & { productId: string };
+export type Address = { id: string; recipient: string; line1: string; line2?: string; city: string; state: string; postalCode: string; phone?: string };
 export type StoredTemplate = TemplateContent & { key: TemplateKey; updatedAt?: string };
 export type ShipmentEvent = { id: string; status: ShipmentStatus; location?: string; note?: string; occurredAt: string };
 export type Shipment = { id: string; orderId: string; code: string; carrier: string; trackingNumber?: string; status: ShipmentStatus; createdAt: string; events: ShipmentEvent[] };
@@ -70,6 +76,18 @@ export interface Store {
   deleteImage(img: string): Promise<void>;
   reduceStock(items: OrderItem[]): Promise<void>;
   restock(items: OrderItem[]): Promise<void>;
+  listShippingZones(): Promise<ShippingZone[]>;
+  saveShippingZones(zones: ShippingZone[]): Promise<void>;
+  getTaxZipRate(zip: string): Promise<TaxZipRate | undefined>;
+  countTaxZipRates(): Promise<number>;
+  replaceTaxZipRates(rates: TaxZipRate[]): Promise<void>;
+  listFitment(): Promise<ProductFitment[]>;
+  saveFitment(productId: string, fitment: Fitment[]): Promise<void>;
+  listAddresses(profileId: string): Promise<Address[]>;
+  saveAddress(profileId: string, address: Omit<Address, 'id'>): Promise<Address>;
+  deleteAddress(profileId: string, id: string): Promise<void>;
+  listCustomerOrders(profileId: string, email?: string): Promise<Order[]>;
+  markWelcomed(profileId: string): Promise<boolean>;
   listTaxRates(): Promise<TaxRate[]>;
   saveTaxRates(rates: TaxRate[]): Promise<void>;
   listEmailTemplates(): Promise<StoredTemplate[]>;
@@ -82,7 +100,7 @@ export interface Store {
   addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }): Promise<Shipment>;
 }
 
-type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[] };
+type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[] };
 
 const seedProducts = (): StoredProduct[] => demoProducts.map((p) => ({ ...p, stockQty: null, active: true, shippingClass: 'parcel', compatibilityVerified: false }));
 
@@ -93,9 +111,9 @@ class LocalFileStore implements Store {
   private async read(): Promise<Data> {
     try {
       const data = JSON.parse(await readFile(this.file, 'utf8'));
-      return { taxRates: [], templates: [], shipments: [], ...data, products: data.products ?? seedProducts() };
+      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], ...data, products: data.products ?? seedProducts() };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [] };
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [] };
       throw e;
     }
   }
@@ -199,6 +217,71 @@ class LocalFileStore implements Store {
 
   async deleteImage(img: string) {
     if (img.startsWith('/uploads/')) await rm(path.join(process.cwd(), 'public', 'uploads', path.basename(img)), { force: true });
+  }
+
+  async listShippingZones() {
+    return (await this.read()).zones;
+  }
+
+  saveShippingZones(zones: ShippingZone[]) {
+    return this.write((d) => {
+      d.zones = zones;
+    });
+  }
+
+  async getTaxZipRate(zip: string) {
+    return (await this.read()).zipRates.find((r) => r.zip === zip);
+  }
+
+  async countTaxZipRates() {
+    return (await this.read()).zipRates.length;
+  }
+
+  replaceTaxZipRates(rates: TaxZipRate[]) {
+    return this.write((d) => {
+      d.zipRates = rates;
+    });
+  }
+
+  async listFitment() {
+    return (await this.read()).fitment;
+  }
+
+  saveFitment(productId: string, fitment: Fitment[]) {
+    return this.write((d) => {
+      d.fitment = [...d.fitment.filter((f) => f.productId !== productId), ...fitment.map((f) => ({ ...f, productId }))];
+    });
+  }
+
+  async listAddresses(profileId: string) {
+    return (await this.read()).addresses.filter((a) => a.profileId === profileId).map(({ profileId: _, ...a }) => a);
+  }
+
+  saveAddress(profileId: string, address: Omit<Address, 'id'>) {
+    return this.write((d) => {
+      const saved = { ...address, id: randomUUID() };
+      d.addresses.push({ ...saved, profileId });
+      return saved;
+    });
+  }
+
+  deleteAddress(profileId: string, id: string) {
+    return this.write((d) => {
+      d.addresses = d.addresses.filter((a) => !(a.id === id && a.profileId === profileId));
+    });
+  }
+
+  async listCustomerOrders(profileId: string, email?: string) {
+    const lower = email?.toLowerCase();
+    return (await this.read()).orders.filter((o) => o.profileId === profileId || (lower && o.email.toLowerCase() === lower)).reverse();
+  }
+
+  markWelcomed(profileId: string) {
+    return this.write((d) => {
+      if (d.welcomed.includes(profileId)) return false;
+      d.welcomed.push(profileId);
+      return true;
+    });
   }
 
   async listTaxRates() {

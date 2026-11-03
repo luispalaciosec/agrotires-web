@@ -6,8 +6,10 @@ export const cartSchema = z.array(z.object({
   quantity: z.number().int().min(1).max(99),
 })).min(1).max(50);
 
+export type CartInput = z.infer<typeof cartSchema>;
+
 export class CartError extends Error {
-  constructor(message: string, public code: 'unknown' | 'stock' | 'freight' | 'quantity') {
+  constructor(message: string, public code: 'unknown' | 'stock' | 'freight' | 'quantity' | 'no_shipping') {
     super(message);
   }
 }

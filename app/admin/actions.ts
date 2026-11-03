@@ -9,7 +9,10 @@ import { brandedHtml, emailEnabled, send } from '@/lib/server/email';
 import { shipOrder, updateShipment } from '@/lib/server/shipments';
 import { fillTemplate, templateDef, templateProblem, type EmailLocale } from '@/lib/email-templates';
 import { CARRIERS, SHIPMENT_STATUSES, type ShipmentStatus } from '@/lib/shipping';
+import { parseFitmentText } from '@/lib/fitment';
 import { percentToBps, US_STATES } from '@/lib/tax';
+import { dollarsToCents, parseZipRates, shippingStates } from '@/lib/server/rates-input';
+import { randomUUID } from 'node:crypto';
 import { importProducts } from '@/lib/server/csv-import';
 import { rateLimited } from '@/lib/server/http';
 import { issueRefund, refundableCents } from '@/lib/server/orders';
@@ -90,7 +93,18 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
   const photos = [...kept.keep, ...added];
   if (photos.length) result.product.img = photos[0];
   result.product.gallery = photos.slice(1);
+  const fitment = parseFitmentText(text('fitment'));
+  if (!fitment.ok) {
+    await Promise.all(added.map((img) => removePhoto(store, img)));
+    return { error: fitment.error };
+  }
   await store.saveProducts([result.product]);
+  try {
+    await store.saveFitment(result.product.id, fitment.fitment);
+  } catch (e) {
+    console.error('Could not save fitment', e);
+    return { error: 'The product was saved, but not its machines. Run the migration 0009_shipping_fitment_accounts.sql and save again.' };
+  }
   // After the save, so a failure can never leave a product pointing at a deleted photo.
   await Promise.all(owned.filter((img) => !photos.includes(img)).map((img) => removePhoto(store, img)));
   refreshStorefront();
@@ -165,12 +179,62 @@ export async function saveTaxRatesAction(_: FormState, form: FormData): Promise<
     if (!text) continue;
     const rateBps = percentToBps(text);
     if (Number.isNaN(rateBps)) return { error: `${name}: enter a percentage from 0 to 20, such as 6.25.` };
-    rates.push({ state, rateBps, active: form.get(`active_${state}`) === 'on' });
+    rates.push({ state, rateBps, active: form.get(`active_${state}`) === 'on', taxShipping: form.get(`ship_${state}`) === 'on' });
   }
   await store.saveTaxRates(rates);
   revalidatePath('/admin/taxes');
   refreshStorefront();
   return { notice: `Saved. ${rates.filter((r) => r.active).length} states charge tax at checkout.` };
+}
+
+export async function importZipRatesAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const file = form.get('file');
+  if (!(file instanceof File) || !file.size) return { error: 'Choose a CSV file.' };
+  if (file.size > 3_500_000) return { error: 'The file is larger than 3.5 MB.' };
+  const parsed = parseZipRates(await file.text());
+  if (!parsed.ok) return { error: parsed.error };
+  try {
+    await store.replaceTaxZipRates(parsed.rates);
+  } catch (e) {
+    console.error('Could not import ZIP rates', e);
+    return { error: 'The rates could not be saved. Run the migration 0009_shipping_fitment_accounts.sql first.' };
+  }
+  revalidatePath('/admin/taxes');
+  return { notice: `Imported ${parsed.rates.length} ZIP codes. They replace the previous list.` };
+}
+
+export async function addShippingZoneAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const name = String(form.get('name') ?? '').trim().slice(0, 80);
+  const states = shippingStates(String(form.get('states') ?? ''));
+  const baseCents = dollarsToCents(String(form.get('base') ?? ''));
+  const perLbCents = dollarsToCents(String(form.get('perLb') ?? '0') || '0');
+  const free = String(form.get('freeOver') ?? '').trim();
+  const freeOverCents = free ? dollarsToCents(free) : undefined;
+  if (!name) return { error: 'Name the zone.' };
+  if (!states) return { error: 'List the states with their two letters, such as IA, NE, KS.' };
+  if (Number.isNaN(baseCents) || Number.isNaN(perLbCents) || (freeOverCents !== undefined && Number.isNaN(freeOverCents))) return { error: 'Enter the amounts in dollars, such as 15 or 0.50.' };
+  try {
+    const zones = await store.listShippingZones();
+    const taken = states.find((s) => zones.some((z) => z.active && z.states.includes(s)));
+    if (taken) return { error: `${taken} is already in another zone.` };
+    await store.saveShippingZones([...zones, { id: randomUUID(), name, states, baseCents, perLbCents, freeOverCents, active: true }]);
+  } catch (e) {
+    console.error('Could not save shipping zone', e);
+    return { error: 'The zone could not be saved. Run the migration 0009_shipping_fitment_accounts.sql first.' };
+  }
+  revalidatePath('/admin/shipping');
+  return { notice: 'Zone added. Checkout uses it now.' };
+}
+
+export async function deleteShippingZoneAction(id: string) {
+  await requireAdmin();
+  const store = requireStore();
+  await store.saveShippingZones((await store.listShippingZones()).filter((z) => z.id !== id));
+  revalidatePath('/admin/shipping');
 }
 
 const templateFields = (form: FormData) => ({

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { TemplateKey } from '../email-templates';
+import type { Fitment } from '../fitment';
 import type { Locale } from '../i18n';
 import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
-import type { Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -193,7 +194,7 @@ export class SupabaseStore implements Store {
 
   async createOrder(o: Omit<Order, 'id' | 'status' | 'createdAt'>) {
     const order = unwrap<OrderRow>(await this.db.from('orders').insert({
-      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency, locale: o.locale ?? 'en', shipping_address: o.shippingAddress ?? null,
+      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency, locale: o.locale ?? 'en', shipping_address: o.shippingAddress ?? null, ...(o.profileId ? { profile_id: o.profileId } : {}),
     }).select().single());
     const ids = unwrap<{ id: string; slug: string }[]>(await this.db.from('products').select('id, slug').in('slug', o.items.map((i) => i.productId)));
     const { error } = await this.db.from('order_items').insert(o.items.map((i) => ({
@@ -222,13 +223,81 @@ export class SupabaseStore implements Store {
     return row ? orderFromRow(row) : undefined;
   }
 
+  async listShippingZones() {
+    type Row = { id: string; name: string; states: string[]; base_cents: number; per_lb_cents: number; free_over_cents: number | null; active: boolean };
+    return unwrap<Row[]>(await this.db.from('shipping_zones').select().order('created_at')).map((z): ShippingZone => ({ id: z.id, name: z.name, states: z.states, baseCents: z.base_cents, perLbCents: z.per_lb_cents, freeOverCents: z.free_over_cents ?? undefined, active: z.active }));
+  }
+
+  async saveShippingZones(zones: ShippingZone[]) {
+    const keep = zones.map((z) => z.id);
+    const old = unwrap<{ id: string }[]>(await this.db.from('shipping_zones').select('id')).map((z) => z.id).filter((id) => !keep.includes(id));
+    if (old.length) unwrap(await this.db.from('shipping_zones').delete().in('id', old).select('id'));
+    if (zones.length) unwrap(await this.db.from('shipping_zones').upsert(zones.map((z) => ({ id: z.id, name: z.name, states: z.states, base_cents: z.baseCents, per_lb_cents: z.perLbCents, free_over_cents: z.freeOverCents ?? null, active: z.active }))).select('id'));
+  }
+
+  async getTaxZipRate(zip: string) {
+    const row = unwrap<{ zip: string; rate_bps: number; region: string | null } | null>(await this.db.from('tax_zip_rates').select().eq('zip', zip).maybeSingle());
+    return row ? { zip: row.zip, rateBps: row.rate_bps, region: row.region ?? undefined } : undefined;
+  }
+
+  async countTaxZipRates() {
+    const { count, error } = await this.db.from('tax_zip_rates').select('zip', { count: 'exact' }).limit(1);
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  }
+
+  async replaceTaxZipRates(rates: TaxZipRate[]) {
+    unwrap(await this.db.from('tax_zip_rates').delete().neq('zip', '').select('zip'));
+    for (let i = 0; i < rates.length; i += 1000) {
+      unwrap(await this.db.from('tax_zip_rates').insert(rates.slice(i, i + 1000).map((r) => ({ zip: r.zip, rate_bps: r.rateBps, region: r.region ?? null }))).select('zip'));
+    }
+  }
+
+  async listFitment() {
+    type Row = { make: string; model: string; year_from: number; year_to: number; products: { slug: string } | null };
+    return (unwrap<unknown[]>(await this.db.from('product_fitment').select('make, model, year_from, year_to, products(slug)').limit(20000)) as Row[]).flatMap((r): ProductFitment[] => (r.products ? [{ productId: r.products.slug, make: r.make, model: r.model, yearFrom: r.year_from, yearTo: r.year_to }] : []));
+  }
+
+  async saveFitment(productId: string, fitment: Fitment[]) {
+    const product = unwrap<{ id: string }>(await this.db.from('products').select('id').eq('slug', productId).single());
+    unwrap(await this.db.from('product_fitment').delete().eq('product_id', product.id).select('id'));
+    if (fitment.length) unwrap(await this.db.from('product_fitment').insert(fitment.map((f) => ({ product_id: product.id, make: f.make, model: f.model, year_from: f.yearFrom, year_to: f.yearTo }))).select('id'));
+  }
+
+  async listAddresses(profileId: string) {
+    type Row = { id: string; recipient: string; line1: string; line2: string | null; city: string; state: string; postal_code: string; phone: string | null };
+    return unwrap<Row[]>(await this.db.from('addresses').select('id, recipient, line1, line2, city, state, postal_code, phone').eq('profile_id', profileId).order('created_at')).map((a): Address => ({ id: a.id, recipient: a.recipient, line1: a.line1, line2: a.line2 ?? undefined, city: a.city, state: a.state, postalCode: a.postal_code, phone: a.phone ?? undefined }));
+  }
+
+  async saveAddress(profileId: string, a: Omit<Address, 'id'>) {
+    const row = unwrap<{ id: string }>(await this.db.from('addresses').insert({ profile_id: profileId, recipient: a.recipient, line1: a.line1, line2: a.line2 ?? null, city: a.city, state: a.state, postal_code: a.postalCode, phone: a.phone ?? null }).select('id').single());
+    return { ...a, id: row.id };
+  }
+
+  async deleteAddress(profileId: string, id: string) {
+    if (!UUID.test(id)) return;
+    unwrap(await this.db.from('addresses').delete().eq('id', id).eq('profile_id', profileId).select('id'));
+  }
+
+  async listCustomerOrders(profileId: string, email?: string) {
+    const mine = unwrap<OrderRow[]>(await this.db.from('orders').select(ORDER_SELECT).eq('profile_id', profileId).order('created_at', { ascending: false }).limit(100));
+    const guest = email ? unwrap<OrderRow[]>(await this.db.from('orders').select(ORDER_SELECT).is('profile_id', null).ilike('email', email.replace(/[\\%_]/g, '\\$&')).order('created_at', { ascending: false }).limit(100)) : [];
+    return [...mine, ...guest].sort((a, b) => b.created_at.localeCompare(a.created_at)).map(orderFromRow);
+  }
+
+  async markWelcomed(profileId: string) {
+    // Only the first caller changes a row, so two logins at once cannot greet twice.
+    const rows = unwrap<{ id: string }[]>(await this.db.from('profiles').update({ welcomed_at: new Date().toISOString() }).eq('id', profileId).is('welcomed_at', null).select('id'));
+    return rows.length > 0;
+  }
+
   async listTaxRates() {
-    return unwrap<{ state: string; rate_bps: number; active: boolean }[]>(await this.db.from('tax_rates').select('state, rate_bps, active').order('state')).map((r): TaxRate => ({ state: r.state, rateBps: r.rate_bps, active: r.active }));
+    return unwrap<{ state: string; rate_bps: number; active: boolean; tax_shipping?: boolean }[]>(await this.db.from('tax_rates').select().order('state')).map((r): TaxRate => ({ state: r.state, rateBps: r.rate_bps, active: r.active, taxShipping: r.tax_shipping ?? false }));
   }
 
   async saveTaxRates(rates: TaxRate[]) {
     const keep = rates.map((r) => r.state);
-    if (rates.length) unwrap(await this.db.from('tax_rates').upsert(rates.map((r) => ({ state: r.state, rate_bps: r.rateBps, active: r.active, updated_at: new Date().toISOString() }))).select('state'));
+    if (rates.length) unwrap(await this.db.from('tax_rates').upsert(rates.map((r) => ({ state: r.state, rate_bps: r.rateBps, active: r.active, tax_shipping: r.taxShipping ?? false, updated_at: new Date().toISOString() }))).select('state'));
     const stale = unwrap<{ state: string }[]>(await this.db.from('tax_rates').select('state')).map((r) => r.state).filter((s) => !keep.includes(s));
     if (stale.length) unwrap(await this.db.from('tax_rates').delete().in('state', stale).select('state'));
   }
@@ -356,7 +425,8 @@ export class SupabaseStore implements Store {
     const refunds = await this.db.from('orders').select('refunded_cents', { head: true });
     // A real read: a head request on a missing table comes back without an error.
     const tools = await this.db.from('shipments').select('id').limit(1);
+    const rates = await this.db.from('shipping_zones').select('id').limit(1);
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error };
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error };
   }
 }

@@ -9,6 +9,7 @@ import { useStore } from './store';
 import { Icon } from './ui';
 
 export type PayPalConfig = { clientId: string; sandbox: boolean };
+type SavedAddress = { id: string; recipient: string; line1: string; line2?: string; city: string; state: string; postalCode: string };
 export type PaidOrder = { orderId: string; status: string; email: string };
 
 type PayPalButtons = { render: (el: HTMLElement) => Promise<void>; close: () => Promise<void> };
@@ -29,13 +30,40 @@ declare global {
 // Stops PayPal's own error handling once this screen has already told the customer what happened.
 class Reported extends Error {}
 
-export function PayPalCheckout({ config, onDone, onStateChange }: { config: PayPalConfig; onDone: (order: PaidOrder) => void; onStateChange: (state: string) => void }) {
+export function PayPalCheckout({ config, onDone, onDestination }: { config: PayPalConfig; onDone: (order: PaidOrder) => void; onDestination: (d: { state: string; zip: string }) => void }) {
   const { cart, t, locale, href } = useStore();
   const l = t.checkout.live;
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [freight, setFreight] = useState(false);
   const form = useRef<HTMLFormElement>(null);
+  const [account, setAccount] = useState<{ signedIn: boolean; email?: string; name?: string; addresses?: SavedAddress[] }>({ signedIn: false });
+  const reportDestination = () => {
+    const f = form.current;
+    if (f) onDestination({ state: (f.elements.namedItem('state') as HTMLSelectElement).value, zip: (f.elements.namedItem('postalCode') as HTMLInputElement).value.trim() });
+  };
+  // A signed-in customer starts with their details filled in.
+  useEffect(() => {
+    let current = true;
+    fetch('/api/account/checkout').then((r) => r.json()).then((body) => {
+      if (!current || !body?.signedIn) return;
+      setAccount(body);
+      const f = form.current;
+      if (!f) return;
+      const set = (name: string, value?: string) => { const el = f.elements.namedItem(name) as HTMLInputElement | null; if (el && !el.value && value) el.value = value; };
+      set('email', body.email);
+      set('name', body.name);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, []);
+  const useAddress = (id: string) => {
+    const a = account.addresses?.find((x) => x.id === id);
+    const f = form.current;
+    if (!a || !f) return;
+    const values: Record<string, string> = { name: a.recipient, line1: a.line1, line2: a.line2 ?? '', city: a.city, state: a.state, postalCode: a.postalCode };
+    for (const [name, value] of Object.entries(values)) (f.elements.namedItem(name) as HTMLInputElement).value = value;
+    reportDestination();
+  };
   const holder = useRef<HTMLDivElement>(null);
   // The buttons render once, so their callbacks read the latest values from here.
   const latest = useRef({ cart, l, locale, onDone });
@@ -47,7 +75,7 @@ export function PayPalCheckout({ config, onDone, onStateChange }: { config: PayP
     if (!ready || !holder.current || !window.paypal) return;
     const customer = () => {
       const d = Object.fromEntries(new FormData(form.current!).entries()) as Record<string, string>;
-      return { email: d.email, address: { name: d.name, line1: d.line1, line2: d.line2, city: d.city, state: d.state, postalCode: d.postalCode } };
+      return { email: d.email, saveAddress: d.saveAddress === 'on', address: { name: d.name, line1: d.line1, line2: d.line2, city: d.city, state: d.state, postalCode: d.postalCode } };
     };
     const fail = (message: string, isFreight = false): never => {
       setError(message);
@@ -73,6 +101,7 @@ export function PayPalCheckout({ config, onDone, onStateChange }: { config: PayP
         if (res?.ok && body?.paypalOrderId) return body.paypalOrderId as string;
         if (res?.status === 429) return fail(text.errBusy);
         if (body?.code === 'freight') return fail(text.errFreight, true);
+        if (body?.code === 'no_shipping') return fail(text.errNoShip, true);
         if (body?.code === 'stock') return fail(text.errStock);
         if (body?.code === 'unknown') return fail(text.errUnknown);
         return fail(text.errStart);
@@ -118,6 +147,15 @@ export function PayPalCheckout({ config, onDone, onStateChange }: { config: PayP
         </div>
         <p style={{ fontSize: 13 }}>{l.emailHelp}</p>
         <h2 style={{ marginTop: 25 }}>{l.addressTitle}</h2>
+        {account.addresses?.length ? (
+          <div className="field">
+            <label className="field-label" htmlFor="checkout-saved">{l.savedAddress}</label>
+            <select id="checkout-saved" className="select-input" defaultValue="" onChange={(e) => useAddress(e.target.value)}>
+              <option value="" disabled>{l.chooseAddress}</option>
+              {account.addresses.map((a) => <option key={a.id} value={a.id}>{a.recipient}, {a.line1}, {a.city}</option>)}
+            </select>
+          </div>
+        ) : null}
         <div className="form-grid">
           <div className="field full-width"><label className="field-label" htmlFor="checkout-name">{l.fullName}</label><input id="checkout-name" className="text-input" name="name" autoComplete="name" maxLength={120} required /></div>
           <div className="field full-width"><label className="field-label" htmlFor="checkout-line1">{l.line1}</label><input id="checkout-line1" className="text-input" name="line1" autoComplete="address-line1" maxLength={200} required /></div>
@@ -125,13 +163,14 @@ export function PayPalCheckout({ config, onDone, onStateChange }: { config: PayP
           <div className="field full-width"><label className="field-label" htmlFor="checkout-city">{l.city}</label><input id="checkout-city" className="text-input" name="city" autoComplete="address-level2" maxLength={120} required /></div>
           <div className="field">
             <label className="field-label" htmlFor="checkout-state">{l.state}</label>
-            <select id="checkout-state" className="select-input" name="state" autoComplete="address-level1" required defaultValue="" onChange={(e) => onStateChange(e.target.value)}>
+            <select id="checkout-state" className="select-input" name="state" autoComplete="address-level1" required defaultValue="" onChange={reportDestination}>
               <option value="" disabled>{l.chooseState}</option>
               {US_STATES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
             </select>
           </div>
-          <div className="field"><label className="field-label" htmlFor="checkout-zip">{l.zip}</label><input id="checkout-zip" className="text-input" name="postalCode" autoComplete="postal-code" inputMode="numeric" pattern="[0-9]{5}(-[0-9]{4})?" required /></div>
+          <div className="field"><label className="field-label" htmlFor="checkout-zip">{l.zip}</label><input id="checkout-zip" className="text-input" name="postalCode" autoComplete="postal-code" inputMode="numeric" pattern="[0-9]{5}(-[0-9]{4})?" required onChange={reportDestination} /></div>
         </div>
+        {account.signedIn ? <label className="check-line"><input type="checkbox" name="saveAddress" /> {l.saveAddress}</label> : null}
       </form>
       <h2 style={{ marginTop: 25 }}>{l.payTitle}</h2>
       <p style={{ fontSize: 13 }}>{l.payHelp}</p>

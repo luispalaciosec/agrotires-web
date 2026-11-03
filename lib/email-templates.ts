@@ -65,9 +65,8 @@ export const EMAIL_TEMPLATES: TemplateDef[] = [
     key: 'welcome',
     name: 'Account created',
     stage: 'Account',
-    when: 'A customer creates an account',
+    when: 'A customer confirms their new account',
     audience: 'customer',
-    pendingNote: 'Ready to edit. It starts sending once customer accounts exist in the store.',
     variables: { name: 'Customer name', store_url: 'Link to the store' },
     subject: { en: 'Welcome to AGROTIRES', es: 'Te damos la bienvenida a AGROTIRES' },
     body: {

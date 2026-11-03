@@ -3,13 +3,13 @@ import { money } from '@/lib/catalog';
 import { requireAdmin } from '@/lib/server/admin-auth';
 import { isSale, taxReport } from '@/lib/server/analytics';
 import { getStore } from '@/lib/server/store';
-import { TaxForm } from '../tools-forms';
+import { TaxForm, ZipRatesForm } from '../tools-forms';
 
 export default async function TaxesPage() {
   await requireAdmin();
   const store = getStore();
   if (!store) return null;
-  const [rates, orders] = await Promise.all([store.listTaxRates().catch(() => undefined), store.listOrders()]);
+  const [rates, orders, zipCount] = await Promise.all([store.listTaxRates().catch(() => undefined), store.listOrders(), store.countTaxZipRates().catch(() => 0)]);
   const year = new Date().getUTCFullYear();
   const report = taxReport(orders, year);
   const usd = (cents: number) => money(cents / 100);
@@ -38,13 +38,16 @@ export default async function TaxesPage() {
       </div>
 
       <div className="notice" style={{ marginBottom: 18 }}>
-        <Icon name="info" size="sm" /> Have your accountant confirm where you must collect and at what rate. This applies one rate per state; many states add county and city taxes, and some products may be exempt. A state with no rate charges no tax.
+        <Icon name="info" size="sm" /> Have your accountant confirm where you must collect and at what rate. State rates apply unless a ZIP rate exists; import ZIP rates below for county and city taxes. Some products may be exempt. A state with no rate charges no tax.
       </div>
 
       <div className="admin-grid two">
         <section className="admin-card">
           <h2>Rates by state</h2>
           {rates ? <TaxForm rates={rates} /> : null}
+          <h2 style={{ marginTop: 24 }}>City and county rates</h2>
+          <p className="mini muted">{zipCount} ZIP codes loaded. A ZIP rate replaces the state rate. Import a CSV with the columns zip, rate and region; it replaces the current list. Your tax provider or state revenue office can supply the file.</p>
+          <ZipRatesForm />
         </section>
         <section className="admin-card">
           <h2>Collected by month and state</h2>

@@ -10,9 +10,9 @@ export async function getPublicProducts(locale: Locale = 'en'): Promise<Product[
   const store = getStore();
   if (!store) return demo();
   try {
-    const list = await store.listProducts();
+    const [list, fitment] = await Promise.all([store.listProducts(), store.listFitment().catch(() => [])]);
     const visible = list.flatMap((p) => (p.active && p.price !== null
-      ? [localizeProduct({ id: p.id, cat: p.cat, name: p.name, nameEs: p.nameEs, sku: p.sku, price: p.price, img: p.img, gallery: p.gallery, tags: p.tags, desc: p.desc, descEs: p.descEs, brand: p.brand, tireSize: p.tireSize, equipmentMake: p.equipmentMake, equipmentModel: p.equipmentModel }, locale)]
+      ? [localizeProduct({ id: p.id, cat: p.cat, name: p.name, nameEs: p.nameEs, sku: p.sku, price: p.price, img: p.img, gallery: p.gallery, fitment: p.compatibilityVerified ? fitment.filter((f) => f.productId === p.id).map(({ make, model, yearFrom, yearTo }) => ({ make, model, yearFrom, yearTo })) : undefined, tags: p.tags, desc: p.desc, descEs: p.descEs, brand: p.brand, tireSize: p.tireSize, equipmentMake: p.equipmentMake, equipmentModel: p.equipmentModel }, locale)]
       : []));
     // While testing, an empty database keeps the sample catalog so the store is never blank.
     return visible.length || !DEMO_CATALOG ? visible : demo();

@@ -14,6 +14,7 @@ const GROUPS: { title: string; links: { href: string; label: string; icon: strin
   ] },
   { title: 'Catalog', links: [{ href: '/admin/products', label: 'Products', icon: 'box' }] },
   { title: 'Setup', links: [
+    { href: '/admin/shipping', label: 'Shipping rates', icon: 'compass' },
     { href: '/admin/taxes', label: 'Taxes', icon: 'shield' },
     { href: '/admin/emails', label: 'Emails', icon: 'mail' },
   ] },

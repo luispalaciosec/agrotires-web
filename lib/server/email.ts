@@ -114,6 +114,7 @@ async function deliver(key: TemplateKey, make: (c?: TemplateContent) => Mail) {
   await send([make(content)]);
 }
 
+export const notifyWelcome = (to: string, name: string, lang: EmailLocale) => deliver('welcome', (c) => build('welcome', lang, to, { name: name || to, store_url: siteUrl() + (lang === 'es' ? '/es' : '') }, c, teamEmail()));
 export const notifyQuote = (q: Quote) => deliver('quote_team', (c) => quoteTeamMail(q, c));
 export const notifyPaid = (order: Order) => Promise.all([deliver('order_paid', (c) => orderCustomerMail(order, c)), deliver('order_team', (c) => orderTeamMail(order, c))]);
 export const notifyRefund = (order: Order, cents: number) => deliver('order_refund', (c) => orderRefundMail(order, cents, c));

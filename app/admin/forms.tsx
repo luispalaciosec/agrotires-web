@@ -68,7 +68,7 @@ async function shrinkPhoto(file: File, maxSide = 1600) {
   return new File([blob], 'photo.jpg', { type: 'image/jpeg' });
 }
 
-export function ProductForm({ product }: { product?: StoredProduct }) {
+export function ProductForm({ product, fitmentText = '' }: { product?: StoredProduct; fitmentText?: string }) {
   const [kept, setKept] = useState<string[]>(() => (product ? productImages(product).filter(isUploadedImage) : []));
   const [previews, setPreviews] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState('');
@@ -193,6 +193,11 @@ export function ProductForm({ product }: { product?: StoredProduct }) {
           <Text name="equipmentModel" label="Equipment model" value={product?.equipmentModel} />
         </div>
         <label className="admin-check"><input type="checkbox" name="compatibilityVerified" defaultChecked={product?.compatibilityVerified} /> Compatibility verified with supplier data</label>
+        <div className="field" style={{ marginTop: 10 }}>
+          <label className="field-label" htmlFor="fitment">Machines it fits, one per line: Make | Model | Years</label>
+          <textarea className="textarea" id="fitment" name="fitment" rows={4} defaultValue={fitmentText} placeholder={'John Deere | 6120M | 2015-2020\nCase IH | Puma 150 | 2012'} />
+          <small className="muted">Customers see these, and can search by machine, only when the box above is checked.</small>
+        </div>
       </div>
       <div className="admin-card form-card" style={{ padding: 22, boxShadow: 'none' }}>
         <h2>Shipping</h2>

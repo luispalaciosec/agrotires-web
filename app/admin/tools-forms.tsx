@@ -5,7 +5,7 @@ import { defaultContent, fillTemplate, templateProblem, type EmailLocale, type T
 import { CARRIERS, SHIPMENT_STAGES, SHIPMENT_STATUSES, STATUS_LABELS, type ShipmentStatus } from '@/lib/shipping';
 import { bpsToPercent, US_STATES } from '@/lib/tax';
 import type { Shipment, TaxRate } from '@/lib/server/store';
-import { addShipmentEventAction, createShipmentAction, resetEmailTemplateAction, saveEmailTemplateAction, saveTaxRatesAction, sendTestEmailAction, type FormState } from './actions';
+import { addShippingZoneAction, importZipRatesAction, addShipmentEventAction, createShipmentAction, resetEmailTemplateAction, saveEmailTemplateAction, saveTaxRatesAction, sendTestEmailAction, type FormState } from './actions';
 import { Messages } from './forms';
 
 const empty: FormState = {};
@@ -39,11 +39,42 @@ export function TaxForm({ rates }: { rates: TaxRate[] }) {
                 <span aria-hidden="true">%</span>
               </div>
               <label className="admin-check"><input type="checkbox" name={`active_${code}`} defaultChecked={rate ? rate.active : true} /> Active</label>
+              <label className="admin-check"><input type="checkbox" name={`ship_${code}`} defaultChecked={rate?.taxShipping} /> Tax shipping</label>
             </div>
           );
         })}
       </div>
       <div className="admin-actions" style={{ marginTop: 16 }}><button className="btn" disabled={pending}>{pending ? 'Saving…' : 'Save rates'}</button></div>
+    </form>
+  );
+}
+
+export function ZipRatesForm() {
+  const [state, action, pending] = useActionState(importZipRatesAction, empty);
+  return (
+    <form onSubmit={submitWith(action)}>
+      <Messages state={state} />
+      <div className="track-row">
+        <input className="text-input" name="file" type="file" accept=".csv,text/csv" aria-label="ZIP rates CSV" required />
+        <button className="btn btn-light" disabled={pending}>{pending ? 'Importing…' : 'Import'}</button>
+      </div>
+    </form>
+  );
+}
+
+export function ShippingZoneForm() {
+  const [state, action, pending] = useActionState(addShippingZoneAction, empty);
+  return (
+    <form key={state.notice} onSubmit={submitWith(action)}>
+      <Messages state={state} />
+      <div className="form-grid">
+        <div className="field full-width"><label className="field-label" htmlFor="zone-name">Zone name *</label><input className="text-input" id="zone-name" name="name" placeholder="Midwest" required /></div>
+        <div className="field full-width"><label className="field-label" htmlFor="zone-states">States *</label><input className="text-input" id="zone-states" name="states" placeholder="IA, NE, KS" required /></div>
+        <div className="field"><label className="field-label" htmlFor="zone-base">Base fee (USD) *</label><input className="text-input" id="zone-base" name="base" inputMode="decimal" required /></div>
+        <div className="field"><label className="field-label" htmlFor="zone-lb">Price per pound (USD)</label><input className="text-input" id="zone-lb" name="perLb" inputMode="decimal" defaultValue="0" /></div>
+        <div className="field full-width"><label className="field-label" htmlFor="zone-free">Free shipping from (USD)</label><input className="text-input" id="zone-free" name="freeOver" inputMode="decimal" placeholder="Leave empty for never" /></div>
+      </div>
+      <div className="admin-actions"><button className="btn" disabled={pending}>{pending ? 'Saving…' : 'Add zone'}</button></div>
     </form>
   );
 }

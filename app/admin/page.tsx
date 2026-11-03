@@ -46,12 +46,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   if (!store) return null;
   const { days: asked } = await searchParams;
   const days = RANGES.includes(Number(asked)) ? Number(asked) : 30;
-  const [products, orders, quotes, shipments, rates] = await Promise.all([
+  const [products, orders, quotes, shipments, rates, zones] = await Promise.all([
     store.listProducts(),
     store.listOrders(),
     store.listQuotes(),
     store.listShipments().catch(() => []),
     store.listTaxRates().catch(() => []),
+    store.listShippingZones().catch(() => []),
   ]);
   const report = salesReport(orders, days);
   const { current, previous } = report;
@@ -63,6 +64,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const readiness: [boolean, string, string][] = [
     [paymentsEnabled(), 'PayPal connected', 'Add the PayPal credentials in Vercel'],
     [emailEnabled(), 'Email connected', 'Add the mailbox app password in Vercel'],
+    [zones.some((z) => z.active), 'Shipping rates set', 'Add the zones you deliver to'],
     [rates.some((r) => r.active), 'Tax rates set', 'Enter the states where you collect tax'],
     [!DEMO_CATALOG, 'Real catalog live', 'Replace the sample catalog and demo notices'],
     [process.env.PAYPAL_ENV === 'live', 'Live payments', 'Only after sandbox tests and owner approval'],

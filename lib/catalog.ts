@@ -1,3 +1,4 @@
+import type { Fitment } from './fitment';
 import type { Locale } from './i18n';
 
 // Demo catalog carried over from the prototype. All products and prices are fictional.
@@ -13,7 +14,7 @@ export const DEMO_CATALOG = true;
 
 export type Category = { id: string; name: string; short: string; desc: string; img: string; tag: string };
 // name and desc are already in the page's language; alt is the name in the other one, for search.
-export type Product = { id: string; cat: string; name: string; sku: string; price: number; img: string; gallery?: string[]; tags: string[]; desc: string; brand?: string; tireSize?: string; equipmentMake?: string; equipmentModel?: string; alt?: string };
+export type Product = { id: string; cat: string; name: string; sku: string; price: number; img: string; gallery?: string[]; fitment?: Fitment[]; tags: string[]; desc: string; brand?: string; tireSize?: string; equipmentMake?: string; equipmentModel?: string; alt?: string };
 export type DemoProduct = Omit<Product, 'alt'> & { nameEs: string; descEs: string };
 export type Guide = { id: string; title: string; icon: string; subtitle: string; body: string };
 

@@ -11,6 +11,8 @@ export const usesSupabaseAuth = () => Boolean(process.env.NEXT_PUBLIC_SUPABASE_U
 const passwordConfigured = () => Boolean(process.env.ADMIN_PASSWORD_HASH && (process.env.ADMIN_SESSION_SECRET || '').length >= 32);
 export const adminConfigured = () => usesSupabaseAuth() || passwordConfigured();
 
+export const supabaseAuthClient = () => authClient();
+
 async function authClient() {
   const store = await cookies();
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {

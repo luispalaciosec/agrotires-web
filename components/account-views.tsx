@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { BUSINESS, money } from '@/lib/catalog';
-import { taxCents } from '@/lib/tax';
 import { PayPalCheckout, type PaidOrder, type PayPalConfig } from './paypal-checkout';
 import { ProductCard } from './product';
 import { useStore } from './store';
@@ -18,12 +17,42 @@ export function WishlistItems() {
     : <EmptyState locale={locale} title={t.wishlist.emptyTitle} body={t.wishlist.emptyBody} />;
 }
 
-export function CheckoutView({ paypal, taxRates = {} }: { paypal?: PayPalConfig; taxRates?: Record<string, number> }) {
+type Totals = { shippingCents: number; taxCents: number; totalCents: number };
+
+// Asks the server what this cart costs for this destination, so the preview always matches the charge.
+function useCheckoutTotals(cart: Record<string, number>, destination: { state: string; zip: string }) {
+  const [state, setState] = useState<{ totals?: Totals; blocked?: boolean; failed?: boolean }>({});
+  const zip = /^\d{5}/.test(destination.zip) ? destination.zip : '';
+  const cartKey = JSON.stringify(cart);
+  useEffect(() => {
+    if (!destination.state) return;
+    let current = true;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/checkout/quote', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state: destination.state, zip: /^\d{5}(-\d{4})?$/.test(zip) ? zip : '', items: Object.entries(JSON.parse(cartKey) as Record<string, number>).map(([id, quantity]) => ({ id, quantity })) }) });
+        const body = await res.json();
+        if (!current) return;
+        if (res.ok) setState({ totals: body });
+        else setState({ blocked: body?.code === 'no_shipping', failed: body?.code !== 'no_shipping' });
+      } catch {
+        if (current) setState({ failed: true });
+      }
+    }, 250);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [destination.state, zip, cartKey]);
+  return state;
+}
+
+export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
   const { cart, total, hydrated, getProduct, t, href, locale, clearCart } = useStore();
   const c = t.checkout;
   const l = c.live;
   const [paid, setPaid] = useState<PaidOrder>();
-  const [taxState, setTaxState] = useState('');
+  const [destination, setDestination] = useState({ state: '', zip: '' });
+  const quoted = useCheckoutTotals(cart, destination);
   if (paid) {
     return (
       <main id="main-content">
@@ -53,21 +82,22 @@ export function CheckoutView({ paypal, taxRates = {} }: { paypal?: PayPalConfig;
     return <div className="checkout-line" key={id}><span>{p.name} <span className="muted">× {qty}</span></span><strong>{money(p.price * qty)}</strong></div>;
   });
   if (paypal) {
-    const tax = taxCents(Math.round(total * 100), taxRates[taxState] ?? 0) / 100;
+    const totals = destination.state ? quoted.totals : undefined;
     return (
       <main id="main-content">
         <PageHead locale={locale} title={l.title} desc={l.desc} crumbs={l.crumb} />
         <div className="container checkout-grid">
           <div className="form-card">
-            <PayPalCheckout config={paypal} onStateChange={setTaxState} onDone={(order) => { setPaid(order); clearCart(); }} />
+            <PayPalCheckout config={paypal} onDestination={setDestination} onDone={(order) => { setPaid(order); clearCart(); }} />
           </div>
           <aside className="checkout-summary">
             <h3>{l.summary}</h3>
             {lines}
-            <div className="checkout-line"><span>{l.tax}</span><strong>{taxState ? money(tax) : '—'}</strong></div>
-            <div className="checkout-total"><span>{l.total}</span><span>{money(total + tax)}</span></div>
-            {taxState ? null : <p className="mini muted">{l.taxHint}</p>}
-            {paypal.sandbox ? <p className="mini muted">{l.noExtras}</p> : null}
+            <div className="checkout-line"><span>{l.shipping}</span><strong>{totals ? money(totals.shippingCents / 100) : '—'}</strong></div>
+            <div className="checkout-line"><span>{l.tax}</span><strong>{totals ? money(totals.taxCents / 100) : '—'}</strong></div>
+            <div className="checkout-total"><span>{l.total}</span><span>{money(totals ? totals.totalCents / 100 : total)}</span></div>
+            {destination.state ? null : <p className="mini muted">{l.taxHint}</p>}
+            {quoted.blocked && destination.state ? <div className="notice" role="alert"><Icon name="info" size="sm" /> {l.errNoShip} <Link className="text-link" href={href('/quote')}>{l.freightLink}</Link></div> : null}
           </aside>
         </div>
       </main>

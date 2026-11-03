@@ -281,3 +281,5 @@ a.route-node:hover{border-color:var(--a-mint)}
   .area-plot{height:190px}
   .admin-menu-panel{position:fixed;left:10px;right:10px;top:62px;width:auto}
 }
+.tax-row{grid-template-columns:minmax(0,1fr) 100px 76px 112px}
+@media(max-width:800px){.tax-row{grid-template-columns:minmax(0,1fr) 90px}.tax-row .admin-check{grid-column:auto;padding:0}}

@@ -5,6 +5,7 @@ import { DetailActions, ProductCard } from '@/components/product';
 import { Icon, JsonLd } from '@/components/ui';
 import { ProductGallery } from '@/components/product-gallery';
 import { DEMO_CATALOG, catHref, getCategory, imageSrc, money, productHref, productImages } from '@/lib/catalog';
+import { fitmentLabel } from '@/lib/fitment';
 import { LOCALE_TAGS, isLocale, localePath, type Locale } from '@/lib/i18n';
 import { resolveLocale } from '@/lib/locale-params';
 import { getPublicProducts } from '@/lib/products';
@@ -91,7 +92,7 @@ export default async function ProductPage({ params }: Props) {
                   {p.brand ? <tr><td>{m.brand}</td><td>{p.brand}</td></tr> : null}
                   {p.tireSize ? <tr><td>{m.tireSize}</td><td>{p.tireSize}</td></tr> : null}
                   <tr><td>{m.price}</td><td>{money(p.price)} {m.sample}</td></tr>
-                  <tr><td>{m.fitment}</td><td>{m.notVerified}</td></tr>
+                  <tr><td>{m.fitment}</td><td>{p.fitment?.length ? <ul className="fitment-list">{p.fitment.slice(0, 30).map((f) => <li key={fitmentLabel(f)}>{fitmentLabel(f)}</li>)}</ul> : m.notVerified}</td></tr>
                   <tr><td>{m.availability}</td><td>{m.demoOnly}</td></tr>
                 </tbody>
               </table>
