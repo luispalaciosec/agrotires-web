@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { trackEvent } from '@/lib/events';
 import { BUSINESS, money } from '@/lib/catalog';
 import { PayPalCheckout, type PaidOrder, type PayPalConfig } from './paypal-checkout';
 import { ProductCard } from './product';
@@ -51,6 +52,13 @@ export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
   const c = t.checkout;
   const l = c.live;
   const [paid, setPaid] = useState<PaidOrder>();
+  const started = useRef(false);
+  const cartCount = Object.keys(cart).length;
+  useEffect(() => {
+    if (!paypal || !cartCount || started.current) return;
+    started.current = true;
+    trackEvent('begin_checkout', { locale });
+  }, [paypal, cartCount, locale]);
   const [destination, setDestination] = useState({ state: '', zip: '' });
   const quoted = useCheckoutTotals(cart, destination);
   if (paid) {
@@ -88,7 +96,7 @@ export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
         <PageHead locale={locale} title={l.title} desc={l.desc} crumbs={l.crumb} />
         <div className="container checkout-grid">
           <div className="form-card">
-            <PayPalCheckout config={paypal} onDestination={setDestination} onDone={(order) => { setPaid(order); clearCart(); }} />
+            <PayPalCheckout config={paypal} onDestination={setDestination} onDone={(order) => { setPaid(order); clearCart(); trackEvent('purchase', { locale }); }} />
           </div>
           <aside className="checkout-summary">
             <h3>{l.summary}</h3>

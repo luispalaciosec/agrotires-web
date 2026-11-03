@@ -5,7 +5,7 @@ import type { Fitment } from '../fitment';
 import type { Locale } from '../i18n';
 import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
-import type { B2bAccount, Review, ReviewStatus, SalesRule, Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { AuditEntry, InventorySetting, PurchaseOrder, ReturnRequest, ReturnStatus, StockLevel, StockMovement, StoreEvent, TeamMember, Warehouse, B2bAccount, Review, ReviewStatus, SalesRule, Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -155,6 +155,11 @@ const b2bFromRow = (r: B2bRow): B2bAccount => ({ profileId: r.profile_id, email:
 type ReviewRow = { id: string; order_id: string; rating: number; author: string; body: string; locale: string; status: ReviewStatus; created_at: string; products: { slug: string } | null };
 const reviewFromRow = (r: ReviewRow): Review[] => (r.products ? [{ id: r.id, productId: r.products.slug, orderId: r.order_id, rating: r.rating, author: r.author, body: r.body, locale: r.locale, status: r.status, createdAt: r.created_at }] : []);
 
+type PoRow = { id: string; supplier: string; warehouse_id: string | null; status: PurchaseOrder['status']; note: string | null; items: PurchaseOrder['items']; created_at: string; received_at: string | null };
+const poFromRow = (r: PoRow): PurchaseOrder => ({ id: r.id, supplier: r.supplier, warehouseId: r.warehouse_id ?? undefined, status: r.status, note: r.note ?? undefined, items: r.items, createdAt: r.created_at, receivedAt: r.received_at ?? undefined });
+type ReturnRow = { id: string; order_id: string; items: ReturnRequest['items']; reason: string; note: string | null; status: ReturnStatus; team_note: string | null; created_at: string };
+const returnFromRow = (r: ReturnRow): ReturnRequest => ({ id: r.id, orderId: r.order_id, items: r.items, reason: r.reason, note: r.note ?? undefined, status: r.status, teamNote: r.team_note ?? undefined, createdAt: r.created_at });
+
 export function quoteFromRow(r: QuoteRow): Quote {
   return {
     id: r.id,
@@ -232,6 +237,129 @@ export class SupabaseStore implements Store {
   async getOrderByCaptureId(captureId: string) {
     const row = unwrap<OrderRow | null>(await this.db.from('orders').select(ORDER_SELECT).eq('paypal_capture_id', captureId).maybeSingle());
     return row ? orderFromRow(row) : undefined;
+  }
+
+  async recordSale(items: OrderItem[], reference: string) {
+    unwrap(await this.db.rpc('apply_sale', { items: items.map((i) => ({ slug: i.productId, quantity: i.quantity })), reference }));
+  }
+
+  async adjustStock(c: { productId: string; warehouseId?: string; delta: number; reason: string; note?: string; actor?: string }) {
+    unwrap(await this.db.rpc('adjust_stock', { p_slug: c.productId, p_warehouse: c.warehouseId ?? null, p_delta: c.delta, p_reason: c.reason, p_note: c.note ?? null, p_actor: c.actor ?? null }));
+  }
+
+  async listWarehouses() {
+    return unwrap<Warehouse[]>(await this.db.from('warehouses').select('id, name, active').order('created_at'));
+  }
+
+  async addWarehouse(name: string) {
+    return unwrap<Warehouse>(await this.db.from('warehouses').insert({ name }).select('id, name, active').single());
+  }
+
+  async listStockLevels() {
+    type Row = { warehouse_id: string; quantity: number; products: { slug: string } | null };
+    return (unwrap<unknown[]>(await this.db.from('stock_levels').select('warehouse_id, quantity, products(slug)')) as Row[]).flatMap((r): StockLevel[] => (r.products ? [{ productId: r.products.slug, warehouseId: r.warehouse_id, quantity: r.quantity }] : []));
+  }
+
+  async listMovements(limit: number) {
+    type Row = { id: string; product_slug: string; warehouse_id: string | null; delta: number; reason: string; note: string | null; actor: string | null; created_at: string };
+    return unwrap<Row[]>(await this.db.from('stock_movements').select().order('created_at', { ascending: false }).limit(limit)).map((m): StockMovement => ({ id: m.id, productId: m.product_slug, warehouseId: m.warehouse_id ?? undefined, delta: m.delta, reason: m.reason, note: m.note ?? undefined, actor: m.actor ?? undefined, createdAt: m.created_at }));
+  }
+
+  async listInventorySettings() {
+    type Row = { reorder_point: number | null; supplier: string | null; products: { slug: string } | null };
+    return (unwrap<unknown[]>(await this.db.from('inventory_settings').select('reorder_point, supplier, products(slug)')) as Row[]).flatMap((r): InventorySetting[] => (r.products ? [{ productId: r.products.slug, reorderPoint: r.reorder_point ?? undefined, supplier: r.supplier ?? undefined }] : []));
+  }
+
+  async saveInventorySetting(s: InventorySetting) {
+    const product = unwrap<{ id: string }>(await this.db.from('products').select('id').eq('slug', s.productId).single());
+    unwrap(await this.db.from('inventory_settings').upsert({ product_id: product.id, reorder_point: s.reorderPoint ?? null, supplier: s.supplier ?? null }).select('product_id'));
+  }
+
+  async listPurchaseOrders() {
+    return unwrap<PoRow[]>(await this.db.from('purchase_orders').select().order('created_at', { ascending: false }).limit(200)).map(poFromRow);
+  }
+
+  async createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'warehouseId' | 'note' | 'items'>) {
+    return poFromRow(unwrap<PoRow>(await this.db.from('purchase_orders').insert({ supplier: po.supplier, warehouse_id: po.warehouseId ?? null, note: po.note ?? null, items: po.items }).select().single()));
+  }
+
+  async markPurchaseOrderReceived(id: string) {
+    if (!UUID.test(id)) return undefined;
+    // Only an open order changes, so two clicks cannot receive it twice.
+    const rows = unwrap<PoRow[]>(await this.db.from('purchase_orders').update({ status: 'received', received_at: new Date().toISOString() }).eq('id', id).eq('status', 'open').select());
+    return rows[0] ? poFromRow(rows[0]) : undefined;
+  }
+
+  async createReturn(r: Pick<ReturnRequest, 'orderId' | 'items' | 'reason' | 'note'>) {
+    return returnFromRow(unwrap<ReturnRow>(await this.db.from('return_requests').insert({ order_id: r.orderId, items: r.items, reason: r.reason, note: r.note ?? null }).select().single()));
+  }
+
+  async listReturns() {
+    return unwrap<ReturnRow[]>(await this.db.from('return_requests').select().order('created_at', { ascending: false }).limit(300)).map(returnFromRow);
+  }
+
+  async listReturnsForOrder(orderId: string) {
+    if (!UUID.test(orderId)) return [];
+    return unwrap<ReturnRow[]>(await this.db.from('return_requests').select().eq('order_id', orderId).order('created_at')).map(returnFromRow);
+  }
+
+  async getReturn(id: string) {
+    if (!UUID.test(id)) return undefined;
+    const row = unwrap<ReturnRow | null>(await this.db.from('return_requests').select().eq('id', id).maybeSingle());
+    return row ? returnFromRow(row) : undefined;
+  }
+
+  async updateReturn(id: string, status: ReturnStatus, teamNote?: string) {
+    unwrap(await this.db.from('return_requests').update({ status, ...(teamNote ? { team_note: teamNote } : {}) }).eq('id', id).select('id'));
+  }
+
+  async addAudit(e: Pick<AuditEntry, 'actor' | 'action' | 'target' | 'detail'>) {
+    unwrap(await this.db.from('audit_log').insert({ actor: e.actor, action: e.action, target: e.target ?? null, detail: e.detail ?? null }).select('id'));
+  }
+
+  async listAudit(limit: number) {
+    type Row = { id: string; actor: string; action: string; target: string | null; detail: string | null; created_at: string };
+    return unwrap<Row[]>(await this.db.from('audit_log').select().order('created_at', { ascending: false }).limit(limit)).map((a): AuditEntry => ({ id: a.id, actor: a.actor, action: a.action, target: a.target ?? undefined, detail: a.detail ?? undefined, createdAt: a.created_at }));
+  }
+
+  private async emailsById() {
+    const map = new Map<string, string>();
+    for (let page = 1; page <= 20; page++) {
+      const { data, error } = await this.db.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) throw new Error(error.message);
+      data.users.forEach((u) => u.email && map.set(u.id, u.email));
+      if (data.users.length < 1000) break;
+    }
+    return map;
+  }
+
+  async listTeam() {
+    const rows = unwrap<{ id: string; role: string }[]>(await this.db.from('profiles').select('id, role').in('role', ['staff', 'admin']));
+    const emails = await this.emailsById();
+    return rows.map((r): TeamMember => ({ email: emails.get(r.id) ?? r.id, role: r.role }));
+  }
+
+  async setRole(email: string, role: 'customer' | 'staff' | 'admin') {
+    const emails = await this.emailsById();
+    const id = [...emails].find(([, e]) => e.toLowerCase() === email.toLowerCase())?.[0];
+    if (!id) return false;
+    unwrap(await this.db.from('profiles').update({ role }).eq('id', id).select('id'));
+    return true;
+  }
+
+  async addEvent(e: StoreEvent) {
+    const { error } = await this.db.from('analytics_events').insert({ name: e.name, session: e.session, product_slug: e.productSlug ?? null, query: e.query ?? null, results: e.results ?? null, locale: e.locale ?? null });
+    if (error) throw new Error(error.message);
+  }
+
+  async listEvents(since: string) {
+    type Row = { name: string; session: string; product_slug: string | null; query: string | null; results: number | null; locale: string | null; created_at: string };
+    return unwrap<Row[]>(await this.db.from('analytics_events').select('name, session, product_slug, query, results, locale, created_at').gte('created_at', since).order('created_at', { ascending: false }).limit(50000)).map((e): StoreEvent => ({ name: e.name, session: e.session, productSlug: e.product_slug ?? undefined, query: e.query ?? undefined, results: e.results ?? undefined, locale: e.locale ?? undefined, createdAt: e.created_at }));
+  }
+
+  async purgeEvents(before: string) {
+    const { error } = await this.db.from('analytics_events').delete().lt('created_at', before);
+    if (error) throw new Error(error.message);
   }
 
   async getOrderByPayToken(token: string) {
@@ -503,7 +631,8 @@ export class SupabaseStore implements Store {
     const tools = await this.db.from('shipments').select('id').limit(1);
     const rates = await this.db.from('shipping_zones').select('id').limit(1);
     const sales = await this.db.from('reviews').select('id').limit(1);
+    const ops = await this.db.from('audit_log').select('id').limit(1);
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error };
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error, migration0011: !ops.error };
   }
 }

@@ -11,13 +11,16 @@ const GROUPS: { title: string; links: { href: string; label: string; icon: strin
     { href: '/admin/shipments', label: 'Shipments', icon: 'truck' },
     { href: '/admin/quotes', label: 'Quote requests', icon: 'clipboard' },
     { href: '/admin/customers', label: 'Customers', icon: 'user' },
+    { href: '/admin/returns', label: 'Returns', icon: 'filter' },
     { href: '/admin/reviews', label: 'Reviews', icon: 'heart' },
   ] },
-  { title: 'Catalog', links: [{ href: '/admin/products', label: 'Products', icon: 'box' }] },
+  { title: 'Catalog', links: [{ href: '/admin/products', label: 'Products', icon: 'box' }, { href: '/admin/inventory', label: 'Inventory', icon: 'wrench' }] },
+  { title: 'Insight', links: [{ href: '/admin/analytics', label: 'Analytics', icon: 'bolt' }, { href: '/admin/accounting', label: 'Accounting', icon: 'guide' }, { href: '/admin/activity', label: 'Activity', icon: 'clock' }] },
   { title: 'Setup', links: [
     { href: '/admin/shipping', label: 'Shipping rates', icon: 'compass' },
     { href: '/admin/taxes', label: 'Taxes', icon: 'shield' },
     { href: '/admin/emails', label: 'Emails', icon: 'mail' },
+    { href: '/admin/team', label: 'Team', icon: 'settings' },
   ] },
 ];
 

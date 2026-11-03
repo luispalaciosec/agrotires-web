@@ -9,6 +9,7 @@ import { fitmentLabel } from '@/lib/fitment';
 import { LOCALE_TAGS, isLocale, localePath, type Locale } from '@/lib/i18n';
 import { resolveLocale } from '@/lib/locale-params';
 import { getPublicProducts } from '@/lib/products';
+import { ProductViewEvent } from '@/components/product-event';
 import { VolumePrices } from '@/components/sales-views';
 import { boughtTogether } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
@@ -48,6 +49,7 @@ export default async function ProductPage({ params }: Props) {
   const related = products.filter((x) => x.id !== p.id && (x.cat === p.cat || x.tags.some((tag) => p.tags.includes(tag)))).slice(0, 4);
   return (
     <main id="main-content">
+      <ProductViewEvent id={p.id} />
       <JsonLd data={breadcrumbLd([[t.common.home, href('/')], [c.name, href(catHref(c.id))], [p.name, href(productHref(p.id))]])} />
       {/* Fictional prices must never be published as real offers. */}
       {!DEMO_CATALOG && (

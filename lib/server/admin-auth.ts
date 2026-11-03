@@ -65,6 +65,12 @@ export async function isFullAdmin() {
   return profile?.role === 'admin';
 }
 
+// For sections only the admin role may see.
+export async function requireFullAdmin() {
+  await requireAdmin();
+  if (!(await isFullAdmin())) redirect('/admin');
+}
+
 // Must run in every admin page and server action: layouts do not protect actions.
 export async function requireAdmin() {
   if (!(await isAdmin())) redirect('/admin/login');

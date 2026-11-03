@@ -32,7 +32,9 @@ async function loadAlerts() {
   if (!store) return { alerts: [], newQuotes: 0 };
   try {
     const [orders, quotes, products, shipments] = await Promise.all([store.listOrders(), store.listQuotes(), store.listProducts(), store.listShipments().catch(() => [])]);
-    return { alerts: priorities(orders, quotes, products, shipments), newQuotes: quotes.filter((q) => q.status === 'new').length };
+    const returns = await store.listReturns().catch(() => []);
+    const open = returns.filter((r) => r.status === 'requested' || r.status === 'approved').length;
+    return { alerts: priorities(orders, quotes, products, shipments, open), newQuotes: quotes.filter((q) => q.status === 'new').length };
   } catch (e) {
     console.error('Could not load admin alerts', e);
     return { alerts: [], newQuotes: 0 };

@@ -1,5 +1,5 @@
 // Every email the store sends. Shared by the server, which sends them, and the panel, which previews them.
-export type TemplateKey = 'quote_payment_link' | 'order_terms' | 'terms_team' | 'b2b_approved' | 'cart_reminder' | 'reorder_reminder' | 'review_request' | 'welcome' | 'order_paid' | 'order_shipped' | 'order_out_for_delivery' | 'order_delivered' | 'order_refund' | 'order_team' | 'quote_team' | 'order_review';
+export type TemplateKey = 'return_received' | 'return_update' | 'return_team' | 'low_stock_team' | 'quote_payment_link' | 'order_terms' | 'terms_team' | 'b2b_approved' | 'cart_reminder' | 'reorder_reminder' | 'review_request' | 'welcome' | 'order_paid' | 'order_shipped' | 'order_out_for_delivery' | 'order_delivered' | 'order_refund' | 'order_team' | 'quote_team' | 'order_review';
 export type EmailLocale = 'en' | 'es';
 export type TemplateContent = { enabled: boolean; subject_en: string; body_en: string; subject_es: string; body_es: string };
 
@@ -31,6 +31,7 @@ const SHIP_VARS = {
   tracking_number: 'Carrier tracking number, or a dash',
   track_url: 'Link to the AGROTIRES tracking page',
   location: 'Last reported location, or a dash',
+  return_url: 'Link to request a return',
 };
 const SAMPLE = {
   order_ref: 'A1B2C3D4',
@@ -56,6 +57,11 @@ const SAMPLE = {
   customer_email: 'ana@example.com',
   detail: 'capture 8X2 is COMPLETED for 1.00 USD',
   store_url: 'https://agrotiresusa.com',
+  return_url: 'https://agrotiresusa.com/returns?order=1',
+  reason: 'Arrived damaged',
+  status: 'Approved',
+  note: 'Please send it to our warehouse.',
+  products: 'Rear Tractor Tire (SKU-001): 2',
   pay_url: 'https://agrotiresusa.com/pay/9fK2xLq0',
   due_date: 'December 3, 2026',
   terms_days: '30',
@@ -220,8 +226,8 @@ export const EMAIL_TEMPLATES: TemplateDef[] = [
     variables: SHIP_VARS,
     subject: { en: 'Your order was delivered: {{order_ref}}', es: 'Tu pedido fue entregado: {{order_ref}}' },
     body: {
-      en: 'Your AGROTIRES order {{order_ref}} was delivered.\n\nIf anything is missing or does not look right, reply to this email and we will help.\n\nThank you for choosing AGROTIRES.',
-      es: 'Tu pedido de AGROTIRES {{order_ref}} fue entregado.\n\nSi falta algo o algo no está bien, responde a este correo y te ayudaremos.\n\nGracias por elegir AGROTIRES.',
+      en: 'Your AGROTIRES order {{order_ref}} was delivered.\n\nIf anything is missing or does not look right, you can request a return here:\n{{return_url}}\n\nThank you for choosing AGROTIRES.',
+      es: 'Tu pedido de AGROTIRES {{order_ref}} fue entregado.\n\nSi falta algo o algo no está bien, puedes solicitar una devolución aquí:\n{{return_url}}\n\nGracias por elegir AGROTIRES.',
     },
   }),
   def({
@@ -235,6 +241,58 @@ export const EMAIL_TEMPLATES: TemplateDef[] = [
     body: {
       en: 'We issued a refund for your AGROTIRES order through PayPal.\n\nOrder reference: {{order_ref}}\nAmount refunded: {{amount}} USD\nTotal refunded on this order: {{refunded_total}} of {{total}} USD\n\nPayPal will let you know when the money is available. You can reply to this email with any questions.',
       es: 'Hicimos un reembolso de tu pedido en AGROTIRES a través de PayPal.\n\nReferencia del pedido: {{order_ref}}\nMonto reembolsado: {{amount}} USD\nTotal reembolsado del pedido: {{refunded_total}} de {{total}} USD\n\nPayPal te avisará cuando el dinero esté disponible. Puedes responder a este correo si tienes preguntas.',
+    },
+  }),
+  def({
+    key: 'return_received',
+    name: 'Return requested',
+    stage: 'After the sale',
+    when: 'A customer requests a return',
+    audience: 'customer',
+    variables: { order_ref: 'Short order reference', items: 'Products to return', reason: 'Reason given' },
+    subject: { en: 'We received your return request: {{order_ref}}', es: 'Recibimos tu solicitud de devolución: {{order_ref}}' },
+    body: {
+      en: 'We received your return request for order {{order_ref}}.\n\n{{items}}\nReason: {{reason}}\n\nPlease do not ship anything yet. The AGROTIRES team will review it and write to you.',
+      es: 'Recibimos tu solicitud de devolución del pedido {{order_ref}}.\n\n{{items}}\nMotivo: {{reason}}\n\nNo envíes nada todavía. El equipo de AGROTIRES la revisará y te escribirá.',
+    },
+  }),
+  def({
+    key: 'return_update',
+    name: 'Return update',
+    stage: 'After the sale',
+    when: 'The team approves, rejects or receives a return',
+    audience: 'customer',
+    variables: { order_ref: 'Short order reference', status: 'New status', note: 'Note from the team, or a dash' },
+    subject: { en: 'Update on your return: {{order_ref}}', es: 'Actualización de tu devolución: {{order_ref}}' },
+    body: {
+      en: 'Your return for order {{order_ref}} has a new status: {{status}}.\n\nNote from the team: {{note}}\n\nYou can reply to this email with any questions.',
+      es: 'Tu devolución del pedido {{order_ref}} tiene un nuevo estado: {{status}}.\n\nNota del equipo: {{note}}\n\nPuedes responder a este correo si tienes preguntas.',
+    },
+  }),
+  def({
+    key: 'return_team',
+    name: 'New return request',
+    stage: 'Team alerts',
+    when: 'A customer requests a return',
+    audience: 'team',
+    variables: { order_ref: 'Short order reference', customer_email: 'Customer email', items: 'Products to return', reason: 'Reason given', note: 'What the customer wrote', admin_url: 'Link to returns in the panel' },
+    subject: { en: 'Return requested: {{order_ref}}', es: 'Return requested: {{order_ref}}' },
+    body: {
+      en: 'Customer: {{customer_email}}\n{{items}}\nReason: {{reason}}\n\n{{note}}\n\nPanel: {{admin_url}}',
+      es: 'Customer: {{customer_email}}\n{{items}}\nReason: {{reason}}\n\n{{note}}\n\nPanel: {{admin_url}}',
+    },
+  }),
+  def({
+    key: 'low_stock_team',
+    name: 'Low stock',
+    stage: 'Team alerts',
+    when: 'The daily check finds products at or below their alert',
+    audience: 'team',
+    variables: { products: 'One line per product', admin_url: 'Link to inventory in the panel' },
+    subject: { en: 'Low stock today', es: 'Low stock today' },
+    body: {
+      en: 'These products are at or below their stock alert:\n\n{{products}}\n\nPanel: {{admin_url}}',
+      es: 'These products are at or below their stock alert:\n\n{{products}}\n\nPanel: {{admin_url}}',
     },
   }),
   def({

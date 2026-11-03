@@ -42,6 +42,17 @@ export type B2bStatus = 'pending' | 'approved' | 'rejected';
 export type B2bAccount = { profileId: string; email: string; company: string; taxId?: string; note?: string; status: B2bStatus; discountBps: number; termsDays: number; createdAt: string };
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 export type Review = { id: string; productId: string; orderId: string; rating: number; author: string; body: string; locale?: string; status: ReviewStatus; createdAt: string };
+export type Warehouse = { id: string; name: string; active: boolean };
+export type StockLevel = { productId: string; warehouseId: string; quantity: number };
+export type StockMovement = { id: string; productId: string; warehouseId?: string; delta: number; reason: string; note?: string; actor?: string; createdAt: string };
+export type InventorySetting = { productId: string; reorderPoint?: number; supplier?: string };
+export type PurchaseOrder = { id: string; supplier: string; warehouseId?: string; status: 'open' | 'received' | 'cancelled'; note?: string; items: { productId: string; sku: string; name: string; quantity: number; unitCostCents: number }[]; createdAt: string; receivedAt?: string };
+export type ReturnStatus = 'requested' | 'approved' | 'rejected' | 'received' | 'closed';
+export type ReturnItem = { sku: string; quantity: number };
+export type ReturnRequest = { id: string; orderId: string; items: ReturnItem[]; reason: string; note?: string; status: ReturnStatus; teamNote?: string; createdAt: string };
+export type AuditEntry = { id: string; actor: string; action: string; target?: string; detail?: string; createdAt: string };
+export type StoreEvent = { name: string; session: string; productSlug?: string; query?: string; results?: number; locale?: string; createdAt?: string };
+export type TeamMember = { email: string; role: string };
 export type TaxRate = { state: string; rateBps: number; active: boolean; taxShipping?: boolean };
 export type TaxZipRate = { zip: string; rateBps: number; region?: string };
 export type ShippingZone = { id: string; name: string; states: string[]; baseCents: number; perLbCents: number; freeOverCents?: number; active: boolean };
@@ -87,6 +98,29 @@ export interface Store {
   reduceStock(items: OrderItem[]): Promise<void>;
   restock(items: OrderItem[]): Promise<void>;
   getOrderByPayToken(token: string): Promise<Order | undefined>;
+  recordSale(items: OrderItem[], reference: string): Promise<void>;
+  adjustStock(change: { productId: string; warehouseId?: string; delta: number; reason: string; note?: string; actor?: string }): Promise<void>;
+  listWarehouses(): Promise<Warehouse[]>;
+  addWarehouse(name: string): Promise<Warehouse>;
+  listStockLevels(): Promise<StockLevel[]>;
+  listMovements(limit: number): Promise<StockMovement[]>;
+  listInventorySettings(): Promise<InventorySetting[]>;
+  saveInventorySetting(setting: InventorySetting): Promise<void>;
+  listPurchaseOrders(): Promise<PurchaseOrder[]>;
+  createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'warehouseId' | 'note' | 'items'>): Promise<PurchaseOrder>;
+  markPurchaseOrderReceived(id: string): Promise<PurchaseOrder | undefined>;
+  createReturn(r: Pick<ReturnRequest, 'orderId' | 'items' | 'reason' | 'note'>): Promise<ReturnRequest>;
+  listReturns(): Promise<ReturnRequest[]>;
+  listReturnsForOrder(orderId: string): Promise<ReturnRequest[]>;
+  getReturn(id: string): Promise<ReturnRequest | undefined>;
+  updateReturn(id: string, status: ReturnStatus, teamNote?: string): Promise<void>;
+  addAudit(entry: Pick<AuditEntry, 'actor' | 'action' | 'target' | 'detail'>): Promise<void>;
+  listAudit(limit: number): Promise<AuditEntry[]>;
+  listTeam(): Promise<TeamMember[]>;
+  setRole(email: string, role: 'customer' | 'staff' | 'admin'): Promise<boolean>;
+  addEvent(event: StoreEvent): Promise<void>;
+  listEvents(since: string): Promise<StoreEvent[]>;
+  purgeEvents(before: string): Promise<void>;
   listSalesRules(): Promise<SalesRule[]>;
   saveSalesRule(rule: SalesRule): Promise<void>;
   getB2bAccount(profileId: string): Promise<B2bAccount | undefined>;
@@ -123,7 +157,7 @@ export interface Store {
   addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }): Promise<Shipment>;
 }
 
-type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[]; rules: SalesRule[]; b2b: B2bAccount[]; reviews: Review[]; optouts: string[]; reminders: string[] };
+type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[]; rules: SalesRule[]; b2b: B2bAccount[]; reviews: Review[]; optouts: string[]; reminders: string[]; warehouses: Warehouse[]; levels: StockLevel[]; movements: StockMovement[]; settings: InventorySetting[]; purchases: PurchaseOrder[]; returns: ReturnRequest[]; audit: AuditEntry[]; events: StoreEvent[] };
 
 const seedProducts = (): StoredProduct[] => demoProducts.map((p) => ({ ...p, stockQty: null, active: true, shippingClass: 'parcel', compatibilityVerified: false }));
 
@@ -134,9 +168,9 @@ class LocalFileStore implements Store {
   private async read(): Promise<Data> {
     try {
       const data = JSON.parse(await readFile(this.file, 'utf8'));
-      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], ...data, products: data.products ?? seedProducts() };
+      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], ...data, products: data.products ?? seedProducts() };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [] };
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [] };
       throw e;
     }
   }
@@ -240,6 +274,149 @@ class LocalFileStore implements Store {
 
   async deleteImage(img: string) {
     if (img.startsWith('/uploads/')) await rm(path.join(process.cwd(), 'public', 'uploads', path.basename(img)), { force: true });
+  }
+
+  recordSale(items: OrderItem[], reference: string) {
+    return this.write((d) => {
+      for (const item of items) {
+        const p = d.products.find((x) => x.id === item.productId);
+        if (!p || p.stockQty === null) continue;
+        p.stockQty = Math.max(0, p.stockQty - item.quantity);
+        const source = d.levels.filter((l) => l.productId === p.id).sort((a, b) => b.quantity - a.quantity)[0];
+        if (source) source.quantity = Math.max(0, source.quantity - item.quantity);
+        d.movements.push({ id: randomUUID(), productId: p.id, warehouseId: source?.warehouseId, delta: -item.quantity, reason: 'sale', note: reference, createdAt: new Date().toISOString() });
+      }
+    });
+  }
+
+  adjustStock(c: { productId: string; warehouseId?: string; delta: number; reason: string; note?: string; actor?: string }) {
+    return this.write((d) => {
+      const p = d.products.find((x) => x.id === c.productId);
+      if (!p) throw new Error('Unknown product');
+      if (c.warehouseId) {
+        let level = d.levels.find((l) => l.productId === c.productId && l.warehouseId === c.warehouseId);
+        if (!level) {
+          level = { productId: c.productId, warehouseId: c.warehouseId, quantity: 0 };
+          d.levels.push(level);
+        }
+        level.quantity = Math.max(0, level.quantity + c.delta);
+      }
+      p.stockQty = Math.max(0, (p.stockQty ?? 0) + c.delta);
+      d.movements.push({ ...c, id: randomUUID(), createdAt: new Date().toISOString() });
+    });
+  }
+
+  async listWarehouses() {
+    return (await this.read()).warehouses;
+  }
+
+  addWarehouse(name: string) {
+    return this.write((d) => {
+      const w: Warehouse = { id: randomUUID(), name, active: true };
+      d.warehouses.push(w);
+      return w;
+    });
+  }
+
+  async listStockLevels() {
+    return (await this.read()).levels;
+  }
+
+  async listMovements(limit: number) {
+    return (await this.read()).movements.slice().reverse().slice(0, limit);
+  }
+
+  async listInventorySettings() {
+    return (await this.read()).settings;
+  }
+
+  saveInventorySetting(s: InventorySetting) {
+    return this.write((d) => {
+      d.settings = [...d.settings.filter((x) => x.productId !== s.productId), s];
+    });
+  }
+
+  async listPurchaseOrders() {
+    return (await this.read()).purchases.slice().reverse();
+  }
+
+  createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'warehouseId' | 'note' | 'items'>) {
+    return this.write((d) => {
+      const saved: PurchaseOrder = { ...po, id: randomUUID(), status: 'open', createdAt: new Date().toISOString() };
+      d.purchases.push(saved);
+      return saved;
+    });
+  }
+
+  markPurchaseOrderReceived(id: string) {
+    return this.write((d) => {
+      const po = d.purchases.find((x) => x.id === id);
+      if (!po || po.status !== 'open') return undefined;
+      po.status = 'received';
+      po.receivedAt = new Date().toISOString();
+      return po;
+    });
+  }
+
+  createReturn(r: Pick<ReturnRequest, 'orderId' | 'items' | 'reason' | 'note'>) {
+    return this.write((d) => {
+      const saved: ReturnRequest = { ...r, id: randomUUID(), status: 'requested', createdAt: new Date().toISOString() };
+      d.returns.push(saved);
+      return saved;
+    });
+  }
+
+  async listReturns() {
+    return (await this.read()).returns.slice().reverse();
+  }
+
+  async listReturnsForOrder(orderId: string) {
+    return (await this.read()).returns.filter((r) => r.orderId === orderId);
+  }
+
+  async getReturn(id: string) {
+    return (await this.read()).returns.find((r) => r.id === id);
+  }
+
+  updateReturn(id: string, status: ReturnStatus, teamNote?: string) {
+    return this.write((d) => {
+      const r = d.returns.find((x) => x.id === id);
+      if (r) Object.assign(r, { status, ...(teamNote ? { teamNote } : {}) });
+    });
+  }
+
+  addAudit(e: Pick<AuditEntry, 'actor' | 'action' | 'target' | 'detail'>) {
+    return this.write((d) => {
+      d.audit.push({ ...e, id: randomUUID(), createdAt: new Date().toISOString() });
+    });
+  }
+
+  async listAudit(limit: number) {
+    return (await this.read()).audit.slice().reverse().slice(0, limit);
+  }
+
+  async listTeam(): Promise<TeamMember[]> {
+    return [];
+  }
+
+  async setRole() {
+    return false;
+  }
+
+  addEvent(e: StoreEvent) {
+    return this.write((d) => {
+      d.events.push({ ...e, createdAt: new Date().toISOString() });
+    });
+  }
+
+  async listEvents(since: string) {
+    return (await this.read()).events.filter((e) => (e.createdAt ?? '') >= since);
+  }
+
+  purgeEvents(before: string) {
+    return this.write((d) => {
+      d.events = d.events.filter((e) => (e.createdAt ?? '') >= before);
+    });
   }
 
   async getOrderByPayToken(token: string) {

@@ -1,4 +1,5 @@
-import { notifyPaid, notifyRefund, notifyReview } from './email';
+import { notifyPaid, notifyRefund, notifyReview, orderRef } from './email';
+import { applySale } from './operations';
 import { valueToCents } from './pricing';
 import { PayPalError, refundPayPalCapture, type PayPalCapture, type PayPalRefund } from './paypal';
 import type { Order, Store } from './store';
@@ -78,7 +79,7 @@ export async function settleCapture(store: Store, stale: Order, capture: PayPalC
   }
   const amountMatches = capture.amount.currency_code === order.currency && valueToCents(capture.amount.value) === order.totalCents;
   if (capture.status === 'COMPLETED' && amountMatches) {
-    await store.reduceStock(order.items);
+    await applySale(store, order.items, orderRef(order.id));
     const paid = await store.updateOrder(order.id, { status: 'paid', paypalCaptureId: capture.id, shippingAddress });
     await notifyPaid(paid);
     return paid;

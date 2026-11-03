@@ -89,6 +89,16 @@ export const orderRefundMail = (order: Order, cents: number, c?: TemplateContent
   order_ref: orderRef(order.id), amount: usd(cents), refunded_total: usd(order.refundedCents ?? 0), total: usd(order.totalCents),
 }, c, teamEmail());
 
+// A missing signing key must never stop a shipping email: the customer can still reply to it.
+function returnUrl(order: Order) {
+  const home = `${siteUrl()}${order.locale === 'es' ? '/es' : ''}`;
+  try {
+    return `${home}/returns?order=${order.id}&sig=${sign('return', order.id)}`;
+  } catch {
+    return `${home}/help`;
+  }
+}
+
 export type ShipmentMailKey = 'order_shipped' | 'order_out_for_delivery' | 'order_delivered';
 
 export const shipmentMail = (key: ShipmentMailKey, order: Order, shipment: Shipment, c?: TemplateContent) => build(key, locale(order), order.email, {
@@ -98,6 +108,7 @@ export const shipmentMail = (key: ShipmentMailKey, order: Order, shipment: Shipm
   tracking_number: shipment.trackingNumber || '-',
   track_url: trackUrl(order, shipment.code),
   location: shipment.events.slice().reverse().find((e) => e.location)?.location || '-',
+  return_url: returnUrl(order),
 }, c, teamEmail());
 
 // An unreadable or missing saved version must never stop an email: the default goes out instead.
@@ -144,6 +155,27 @@ export const notifyTerms = (order: Order, account: B2bAccount) => {
 };
 
 export const notifyB2bApproved = (account: B2bAccount, lang: EmailLocale) => deliver('b2b_approved', (c) => build('b2b_approved', lang, account.email, { company: account.company, discount: `${account.discountBps / 100}%`, terms_days: String(account.termsDays) }, c, teamEmail()));
+
+const REASON_LABELS: Record<string, { en: string; es: string }> = {
+  damaged: { en: 'Arrived damaged', es: 'Llegó dañado' }, wrong_item: { en: 'Wrong item', es: 'Producto equivocado' }, not_compatible: { en: 'Does not fit', es: 'No es compatible' }, not_needed: { en: 'No longer needed', es: 'Ya no lo necesito' }, other: { en: 'Other', es: 'Otro motivo' },
+};
+const STATUS_LABELS: Record<string, { en: string; es: string }> = { approved: { en: 'Approved', es: 'Aprobada' }, rejected: { en: 'Not approved', es: 'No aprobada' }, received: { en: 'Goods received', es: 'Mercancía recibida' } };
+
+export const notifyReturnRequested = (order: Order, r: { items: { sku: string; quantity: number }[]; reason: string; note?: string }) => {
+  const lang = locale(order);
+  const items = r.items.map((i) => `${i.quantity} x ${order.items.find((x) => x.sku === i.sku)?.name ?? i.sku}`).join('\n');
+  return Promise.all([
+    deliver('return_received', (c) => build('return_received', lang, order.email, { order_ref: orderRef(order.id), items, reason: REASON_LABELS[r.reason]?.[lang] ?? r.reason }, c, teamEmail())),
+    deliver('return_team', (c) => build('return_team', 'en', teamEmail(), { order_ref: orderRef(order.id), customer_email: order.email, items, reason: REASON_LABELS[r.reason]?.en ?? r.reason, note: r.note || '-', admin_url: `${siteUrl()}/admin/returns` }, c, order.email)),
+  ]);
+};
+
+export const notifyReturnUpdate = (order: Order, status: string, note?: string) => {
+  const lang = locale(order);
+  return deliver('return_update', (c) => build('return_update', lang, order.email, { order_ref: orderRef(order.id), status: STATUS_LABELS[status]?.[lang] ?? status, note: note || '-' }, c, teamEmail()));
+};
+
+export const notifyLowStock = (products: { name: string; sku: string; stockQty: number | null }[]) => deliver('low_stock_team', (c) => build('low_stock_team', 'en', teamEmail(), { products: products.map((p) => `${p.name} (${p.sku}): ${p.stockQty}`).join('\n'), admin_url: `${siteUrl()}/admin/inventory` }, c));
 
 export const notifyWelcome = (to: string, name: string, lang: EmailLocale) => deliver('welcome', (c) => build('welcome', lang, to, { name: name || to, store_url: siteUrl() + (lang === 'es' ? '/es' : '') }, c, teamEmail()));
 export const notifyQuote = (q: Quote) => deliver('quote_team', (c) => quoteTeamMail(q, c));

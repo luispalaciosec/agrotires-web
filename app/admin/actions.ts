@@ -4,13 +4,14 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { isUploadedImage, productImages } from '@/lib/catalog';
-import { adminConfigured, isFullAdmin, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
+import { adminConfigured, currentAdmin, isFullAdmin, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
 import { brandedHtml, emailEnabled, send } from '@/lib/server/email';
 import { shipOrder, updateShipment } from '@/lib/server/shipments';
 import { fillTemplate, templateDef, templateProblem, type EmailLocale } from '@/lib/email-templates';
 import { CARRIERS, SHIPMENT_STATUSES, type ShipmentStatus } from '@/lib/shipping';
 import { parseFitmentText } from '@/lib/fitment';
 import { createPayLink, parseQuoteLines } from '@/lib/server/sales';
+import { changeReturnStatus, parsePurchaseLines, receivePurchaseOrder } from '@/lib/server/operations';
 import { notifyB2bApproved } from '@/lib/server/email';
 import { isUsState } from '@/lib/tax';
 import { percentToBps, US_STATES } from '@/lib/tax';
@@ -23,7 +24,17 @@ import { paymentsEnabled } from '@/lib/server/paypal';
 import { checkPhoto, keptPhotos } from '@/lib/server/photo-upload';
 import { valueToCents } from '@/lib/server/pricing';
 import { parseProduct, type ProductInput } from '@/lib/server/product-input';
-import { getStore, type OrderStatus, type QuoteStatus, type ShippingClass, type Store } from '@/lib/server/store';
+import { getStore, type OrderStatus, type QuoteStatus, type ReturnStatus, type ShippingClass, type Store } from '@/lib/server/store';
+
+// A failure to record never blocks the change itself, but it is logged.
+async function audit(action: string, target?: string, detail?: string) {
+  try {
+    const { name } = await currentAdmin();
+    await getStore()?.addAudit({ actor: name, action, target, detail });
+  } catch (e) {
+    console.error('Could not record activity', action, e);
+  }
+}
 
 export type FormState = { error?: string; errors?: string[]; notice?: string };
 
@@ -130,6 +141,7 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
     console.error('Could not save fitment', e);
     return { error: 'The product was saved, but not its machines or sales rules. Run the migrations 0009 and 0010 and save again.' };
   }
+  await audit(id ? 'Edited product' : 'Created product', result.product.sku, result.product.price === null ? undefined : `Price $${result.product.price}, ${result.product.active ? "visible" : "hidden"}`);
   // After the save, so a failure can never leave a product pointing at a deleted photo.
   await Promise.all(owned.filter((img) => !photos.includes(img)).map((img) => removePhoto(store, img)));
   refreshStorefront();
@@ -141,6 +153,7 @@ export async function deleteProductAction(id: string) {
   const store = requireStore();
   const product = (await store.listProducts()).find((p) => p.id === id);
   await store.deleteProduct(id);
+  await audit('Deleted product', product?.sku ?? id);
   if (product) await Promise.all(productImages(product).map((img) => removePhoto(store, img)));
   refreshStorefront();
   redirect('/admin/products');
@@ -156,6 +169,7 @@ export async function importProductsAction(_: FormState, form: FormData): Promis
   if (!result.ok) return { errors: result.errors };
   await store.saveProducts(result.products);
   refreshStorefront();
+  await audit('Imported products', `${result.created} created, ${result.updated} updated`);
   return { notice: `Import complete: ${result.created} created, ${result.updated} updated.` };
 }
 
@@ -173,6 +187,7 @@ export async function refundOrderAction(id: string, _: FormState, form: FormData
   revalidatePath(`/admin/orders/${id}`);
   revalidatePath('/admin/orders');
   if (!result.ok) return { error: result.error };
+  await audit('Refunded order', order.id.slice(0, 8).toUpperCase(), `$${(cents / 100).toFixed(2)}${restock ? ", items back in stock" : ""}`);
   if (restock) {
     await store.restock(order.items);
     refreshStorefront();
@@ -192,6 +207,7 @@ export async function updateOrderStatusAction(id: string, status: OrderStatus) {
   const order = await store.getOrder(id);
   if (!order || !ORDER_TRANSITIONS[order.status]?.includes(status)) throw new Error('That status change is not allowed');
   await store.updateOrder(id, { status });
+  await audit('Changed order status', id.slice(0, 8).toUpperCase(), status);
   revalidatePath(`/admin/orders/${id}`);
 }
 
@@ -207,6 +223,7 @@ export async function saveTaxRatesAction(_: FormState, form: FormData): Promise<
     rates.push({ state, rateBps, active: form.get(`active_${state}`) === 'on', taxShipping: form.get(`ship_${state}`) === 'on' });
   }
   await store.saveTaxRates(rates);
+  await audit('Saved tax rates', `${rates.length} states`);
   revalidatePath('/admin/taxes');
   refreshStorefront();
   return { notice: `Saved. ${rates.filter((r) => r.active).length} states charge tax at checkout.` };
@@ -225,6 +242,7 @@ export async function createPayLinkAction(quoteId: string, _: FormState, form: F
   if (!v('name') || !v('line1') || !v('city') || !isUsState(v('state')) || !/^\d{5}(-\d{4})?$/.test(v('postalCode'))) return { error: 'Complete the delivery address.' };
   try {
     const order = await createPayLink(store, quote, { lines: lines.lines, freightCents, address: { name: v('name'), line1: v('line1'), line2: v('line2') || undefined, city: v('city'), state: v('state'), postalCode: v('postalCode') } });
+    await audit('Created payment link', order.id.slice(0, 8).toUpperCase(), `$${(order.totalCents / 100).toFixed(2)}`);
     revalidatePath(`/admin/quotes/${quoteId}`);
     return { notice: `LINK:${order.payToken}` };
   } catch (e) {
@@ -241,6 +259,7 @@ export async function saveB2bDecisionAction(profileId: string, _: FormState, for
   if (!account) return { error: 'Account not found.' };
   if (form.get('decision') === 'reject') {
     await store.saveB2bAccount({ ...account, status: 'rejected', discountBps: 0, termsDays: 0 });
+    await audit('Rejected business account', account.company);
     revalidatePath('/admin/customers');
     return { notice: 'Application rejected.' };
   }
@@ -250,6 +269,7 @@ export async function saveB2bDecisionAction(profileId: string, _: FormState, for
   if (!Number.isInteger(termsDays) || termsDays < 0 || termsDays > 180) return { error: 'Enter the days to pay, from 0 to 180.' };
   const updated = { ...account, status: 'approved' as const, discountBps, termsDays };
   await store.saveB2bAccount(updated);
+  await audit('Approved business account', account.company, `${discountBps / 100}% off, ${termsDays} days`);
   if (account.status !== 'approved') await notifyB2bApproved(updated, 'en');
   revalidatePath('/admin/customers');
   return { notice: `${account.company} approved.` };
@@ -261,12 +281,14 @@ export async function markInvoicePaidAction(orderId: string) {
   const order = await store.getOrder(orderId);
   if (!order?.invoiceDueAt || order.invoicePaidAt) return;
   await store.updateOrder(orderId, { invoicePaidAt: new Date().toISOString(), ...(order.status === 'on_terms' ? { status: 'paid' as const } : {}) });
+  await audit('Marked invoice paid', orderId.slice(0, 8).toUpperCase());
   revalidatePath(`/admin/orders/${orderId}`);
 }
 
 export async function moderateReviewAction(id: string, status: 'approved' | 'rejected') {
   await requireAdmin();
   await requireStore().moderateReview(id, status);
+  await audit('Moderated review', id.slice(0, 8), status);
   revalidatePath('/admin/reviews');
   refreshStorefront();
 }
@@ -286,6 +308,7 @@ export async function importZipRatesAction(_: FormState, form: FormData): Promis
     return { error: 'The rates could not be saved. Run the migration 0009_shipping_fitment_accounts.sql first.' };
   }
   revalidatePath('/admin/taxes');
+  await audit('Imported ZIP tax rates', `${parsed.rates.length} ZIP codes`);
   return { notice: `Imported ${parsed.rates.length} ZIP codes. They replace the previous list.` };
 }
 
@@ -311,6 +334,7 @@ export async function addShippingZoneAction(_: FormState, form: FormData): Promi
     return { error: 'The zone could not be saved. Run the migration 0009_shipping_fitment_accounts.sql first.' };
   }
   revalidatePath('/admin/shipping');
+  await audit('Added shipping zone', name, states.join(", "));
   return { notice: 'Zone added. Checkout uses it now.' };
 }
 
@@ -318,6 +342,7 @@ export async function deleteShippingZoneAction(id: string) {
   await requireAdmin();
   const store = requireStore();
   await store.saveShippingZones((await store.listShippingZones()).filter((z) => z.id !== id));
+  await audit('Deleted shipping zone', id.slice(0, 8));
   revalidatePath('/admin/shipping');
 }
 
@@ -342,6 +367,7 @@ export async function saveEmailTemplateAction(key: string, _: FormState, form: F
     return { error: 'The email could not be saved. If you have not yet, run the migration 0008_admin_tools.sql.' };
   }
   revalidatePath('/admin/emails');
+  await audit('Edited email', def.name);
   return { notice: 'Email saved. The next one sent uses this text.' };
 }
 
@@ -356,6 +382,7 @@ export async function resetEmailTemplateAction(key: string): Promise<FormState> 
     return { error: 'The email could not be restored. Please try again.' };
   }
   revalidatePath('/admin/emails');
+  await audit('Restored email', def.name);
   return { notice: 'Original text restored.' };
 }
 
@@ -393,6 +420,7 @@ export async function createShipmentAction(orderId: string, _: FormState, form: 
   }
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath('/admin/shipments');
+  await audit('Created shipment', orderId.slice(0, 8).toUpperCase(), carrier);
   return { notice: 'Shipment created.' };
 }
 
@@ -406,7 +434,107 @@ export async function addShipmentEventAction(orderId: string, shipmentId: string
   await updateShipment(store, order, shipment, { status, location: clean(form, 'location', 120), note: clean(form, 'note', 300) }, form.get('notify') === 'on');
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath('/admin/shipments');
+  await audit('Updated shipment', orderId.slice(0, 8).toUpperCase(), status);
   return { notice: 'Update added. The tracking page shows it now.' };
+}
+
+export async function addWarehouseAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const name = String(form.get('name') ?? '').trim().slice(0, 80);
+  if (!name) return { error: 'Name the warehouse.' };
+  try {
+    await requireStore().addWarehouse(name);
+  } catch (e) {
+    console.error('Could not add warehouse', e);
+    return { error: 'It could not be saved. Run the migration 0011_operations.sql first.' };
+  }
+  await audit('Added warehouse', name);
+  revalidatePath('/admin/inventory');
+  return { notice: 'Warehouse added.' };
+}
+
+export async function adjustStockAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const v = (name: string) => String(form.get(name) ?? '').trim();
+  const productId = v('product');
+  const delta = Number(v('delta'));
+  if (!(await store.listProducts()).some((p) => p.id === productId)) return { error: 'Choose a product.' };
+  if (!Number.isInteger(delta) || Math.abs(delta) > 100000) return { error: 'Enter a whole number, such as 10 or -3.' };
+  const reorder = v('reorderPoint');
+  const reorderPoint = reorder ? Number(reorder) : undefined;
+  if (reorderPoint !== undefined && (!Number.isInteger(reorderPoint) || reorderPoint < 0)) return { error: 'The alert must be a whole number.' };
+  try {
+    const { name } = await currentAdmin();
+    if (delta) await store.adjustStock({ productId, warehouseId: v('warehouse') || undefined, delta, reason: v('reason') || 'other', note: v('note').slice(0, 200) || undefined, actor: name });
+    if (reorderPoint !== undefined || v('supplier')) {
+      const current = (await store.listInventorySettings()).find((s) => s.productId === productId);
+      await store.saveInventorySetting({ productId, reorderPoint: reorderPoint ?? current?.reorderPoint, supplier: v('supplier').slice(0, 120) || current?.supplier });
+    }
+  } catch (e) {
+    console.error('Could not adjust stock', e);
+    return { error: 'It could not be saved. Run the migration 0011_operations.sql first.' };
+  }
+  await audit('Adjusted stock', productId, `${delta > 0 ? '+' : ''}${delta}`);
+  revalidatePath('/admin/inventory');
+  refreshStorefront();
+  return { notice: 'Saved.' };
+}
+
+export async function createPurchaseOrderAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const v = (name: string) => String(form.get(name) ?? '').trim();
+  if (!v('supplier')) return { error: 'Name the supplier.' };
+  const parsed = parsePurchaseLines(v('lines'), await store.listProducts());
+  if (!parsed.ok) return { error: parsed.error };
+  try {
+    const po = await store.createPurchaseOrder({ supplier: v('supplier').slice(0, 120), warehouseId: v('warehouse') || undefined, note: v('note').slice(0, 300) || undefined, items: parsed.items });
+    await audit('Created supplier order', po.id.slice(0, 8).toUpperCase(), po.supplier);
+  } catch (e) {
+    console.error('Could not create supplier order', e);
+    return { error: 'It could not be saved. Run the migration 0011_operations.sql first.' };
+  }
+  revalidatePath('/admin/inventory');
+  return { notice: 'Supplier order created. Receive it when the goods arrive.' };
+}
+
+export async function receivePurchaseOrderAction(id: string) {
+  await requireAdmin();
+  const { name } = await currentAdmin();
+  if (await receivePurchaseOrder(requireStore(), id, name)) await audit('Received supplier order', id.slice(0, 8).toUpperCase());
+  revalidatePath('/admin/inventory');
+  refreshStorefront();
+}
+
+export async function updateReturnAction(id: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const request = await store.getReturn(id);
+  const order = request ? await store.getOrder(request.orderId) : undefined;
+  if (!request || !order) return { error: 'Return not found.' };
+  const status = String(form.get('status') ?? '') as ReturnStatus;
+  const note = String(form.get('teamNote') ?? '').trim().slice(0, 500) || undefined;
+  if (!(await changeReturnStatus(store, request, order, status, note))) return { error: 'That step is not available now.' };
+  await audit('Updated return', order.id.slice(0, 8).toUpperCase(), status);
+  revalidatePath('/admin/returns');
+  return { notice: 'Saved.' };
+}
+
+export async function setRoleAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can change roles.' };
+  const store = requireStore();
+  const email = String(form.get('email') ?? '').trim();
+  const role = String(form.get('role') ?? '') as 'customer' | 'staff' | 'admin';
+  if (!['customer', 'staff', 'admin'].includes(role)) return { error: 'Choose a role.' };
+  const team = await store.listTeam();
+  const admins = team.filter((m) => m.role === 'admin');
+  if (role !== 'admin' && admins.length === 1 && admins[0].email.toLowerCase() === email.toLowerCase()) return { error: 'This is the only administrator. Name another one first.' };
+  if (!(await store.setRole(email, role))) return { error: 'No account has that email. The person must create one in the store first.' };
+  await audit('Changed role', email, role);
+  revalidatePath('/admin/team');
+  return { notice: `${email} is now ${role}.` };
 }
 
 export async function updateQuoteStatusAction(id: string, status: QuoteStatus) {

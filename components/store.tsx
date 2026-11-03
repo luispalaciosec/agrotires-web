@@ -1,5 +1,6 @@
 'use client';
 
+import { trackEvent } from '@/lib/events';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Product } from '@/lib/catalog';
@@ -114,6 +115,7 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
         setCart(next);
         setLS('agrotires-demo-cart', next);
         toast(t.cart.added);
+        trackEvent('add_to_cart', { productSlug: id, locale });
       },
       setQty(id, n) {
         if (!getProduct(id)) return;

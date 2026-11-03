@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { json } from '@/lib/server/http';
+import { runDailyChecks } from '@/lib/server/operations';
 import { runReminders } from '@/lib/server/reminders';
 import { getStore } from '@/lib/server/store';
 
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
   const store = getStore();
   if (!store) return json({ error: 'Not available' }, 503);
   try {
-    return json(await runReminders(store));
+    return json({ ...(await runReminders(store)), ...(await runDailyChecks(store)) });
   } catch (e) {
     console.error('Reminders failed', e);
     return json({ error: 'Reminders failed' }, 500);

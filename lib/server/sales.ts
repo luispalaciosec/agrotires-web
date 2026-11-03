@@ -1,4 +1,5 @@
 import { getCustomer } from './customer';
+import { applySale } from './operations';
 import { dollarsToCents } from './rates-input';
 import { newToken, sign } from './signed';
 import { notifyPayLink, notifyTerms } from './email';
@@ -61,7 +62,7 @@ export async function approvedAccount(store: Store): Promise<B2bAccount | undefi
 }
 
 export async function placeOnTerms(store: Store, order: Order, account: B2bAccount, now = Date.now()) {
-  await store.reduceStock(order.items);
+  await applySale(store, order.items, order.id.slice(0, 8).toUpperCase());
   const updated = await store.updateOrder(order.id, { status: 'on_terms', invoiceDueAt: new Date(now + account.termsDays * DAY).toISOString() });
   await notifyTerms(updated, account);
   return updated;

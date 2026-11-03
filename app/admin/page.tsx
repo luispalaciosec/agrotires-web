@@ -57,7 +57,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const report = salesReport(orders, days);
   const { current, previous } = report;
   const route = orderRoute(orders, shipments, days);
-  const todo = priorities(orders, quotes, products, shipments);
+  const openReturns = (await store.listReturns().catch(() => [])).filter((r) => r.status === 'requested' || r.status === 'approved').length;
+  const todo = priorities(orders, quotes, products, shipments, openReturns);
   const testing = process.env.PAYPAL_ENV !== 'live';
   const netChange = change(current.netCents, previous.netCents);
 

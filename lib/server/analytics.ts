@@ -78,13 +78,14 @@ export function orderRoute(allOrders: Order[], shipments: Shipment[], days: numb
 }
 
 // What needs someone's attention right now, most urgent first.
-export function priorities(orders: Order[], quotes: Quote[], products: StoredProduct[], shipments: Shipment[]) {
+export function priorities(orders: Order[], quotes: Quote[], products: StoredProduct[], shipments: Shipment[], openReturns = 0) {
   const shipped = new Set(shipments.map((s) => s.orderId));
   const list: { count: number; label: string; href: string; tone: 'bad' | 'warn' | 'ok' }[] = [
     { count: orders.filter((o) => o.status === 'payment_failed' && o.paypalCaptureId).length, label: 'payments need review', href: '/admin/orders?status=payment_failed', tone: 'bad' },
     { count: shipments.filter((s) => s.status === 'exception').length, label: 'shipments with a problem', href: '/admin/shipments?status=exception', tone: 'bad' },
     { count: orders.filter((o) => unpaidInvoice(o) && new Date(o.invoiceDueAt!).getTime() < Date.now()).length, label: 'overdue invoices', href: '/admin/orders?status=on_terms', tone: 'bad' },
     { count: orders.filter((o) => (o.status === 'paid' || o.status === 'on_terms') && !shipped.has(o.id)).length, label: 'orders to ship', href: '/admin/orders?status=paid', tone: 'warn' },
+    { count: openReturns, label: 'returns to handle', href: '/admin/returns', tone: 'warn' },
     { count: quotes.filter((q) => q.status === 'new').length, label: 'new quote requests', href: '/admin/quotes', tone: 'warn' },
     { count: products.filter((p) => p.active && p.stockQty === 0).length, label: 'visible products out of stock', href: '/admin/products', tone: 'warn' },
     { count: products.filter((p) => p.active && p.stockQty !== null && p.stockQty > 0 && p.stockQty <= LOW_STOCK).length, label: `products with ${LOW_STOCK} or fewer left`, href: '/admin/products', tone: 'ok' },

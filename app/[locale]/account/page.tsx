@@ -7,6 +7,7 @@ import { LOCALE_TAGS, localePath } from '@/lib/i18n';
 import { resolveLocale, type LocaleParams } from '@/lib/locale-params';
 import { accountsEnabled, getCustomer } from '@/lib/server/customer';
 import { orderRef, publicSite } from '@/lib/server/email';
+import { returnable, returnLink } from '@/lib/server/operations';
 import { reviewLink } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
 import { deleteAddressAction, signOutAction } from './actions';
@@ -85,6 +86,7 @@ export default async function AccountPage(props: LocaleParams & { searchParams: 
                     <p>{o.items.map((item) => `${item.quantity} x ${item.name}`).join(', ')}</p>
                     <div className="account-order-actions">
                       {shipment ? <Link className="btn btn-light" href={`${localePath(locale, '/track')}?code=${shipment.code}`}>{u.track} <Icon name="truck" size="sm" /></Link> : null}
+                      {returnable(o) ? <a className="text-link" href={returnLink(locale, o.id)}>{t.returns.cta}</a> : null}
                       <BuyAgain items={o.items.map((item) => ({ id: item.productId, quantity: item.quantity }))} />
                       {['paid', 'fulfilled', 'on_terms'].includes(o.status) ? o.items.filter((item) => item.productId).slice(0, 3).map((item) => <a className="text-link" key={item.sku} href={reviewLink(publicSite(), locale, o.id, item.productId)}>{t.sales.reviewCta(item.name)}</a>) : null}
                     </div>

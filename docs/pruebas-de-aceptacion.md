@@ -44,6 +44,14 @@ Marca cada punto con la fecha y quién lo probó. Si algo falla, anota el mensaj
 - [ ] Cotización a enlace de pago: se puede pagar una sola vez.
 - [ ] Reseña desde la cuenta: queda pendiente y aparece al aprobarla.
 
+## Operación
+- [ ] Solicitar una devolución desde el correo o la cuenta, aprobarla y marcarla recibida; llegan los avisos.
+- [ ] Crear una bodega, ajustar stock y revisar el movimiento.
+- [ ] Crear y recibir una orden a proveedor: el stock sube una sola vez.
+- [ ] Importar en Zoho Books el CSV de facturas con pocos pedidos y comparar totales.
+- [ ] Revisar el embudo y las búsquedas sin resultados en Analytics.
+- [ ] Revisar quién hizo qué en Activity.
+
 ## Panel y seguridad
 - [ ] Una cuenta de personal no puede reembolsar.
 - [ ] Sin sesión, ninguna página de `/admin` abre.

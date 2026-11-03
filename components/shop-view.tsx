@@ -1,7 +1,8 @@
 'use client';
 
+import { trackEvent } from '@/lib/events';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { getCategories, getCategory, money } from '@/lib/catalog';
 import { ProductCard } from './product';
 import { searchProducts } from '@/lib/search';
@@ -46,6 +47,13 @@ function ShopView({ category, search }: { category: string; search: string }) {
     else if (sort === 'az') list.sort((a, b) => a.name.localeCompare(b.name));
     return list;
   }, [products, category, search, sort, machine, max]);
+
+  const searched = useRef('');
+  useEffect(() => {
+    if (!search || searched.current === search) return;
+    searched.current = search;
+    trackEvent('search', { query: search, results: filtered.length, locale });
+  }, [search, filtered.length, locale]);
 
   const clear = () => {
     setMachine('');
