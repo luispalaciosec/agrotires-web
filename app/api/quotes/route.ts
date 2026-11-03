@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LOCALES } from '@/lib/i18n';
+import { notifyQuote } from '@/lib/server/email';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { getStore } from '@/lib/server/store';
 
@@ -29,5 +30,6 @@ export async function POST(req: Request) {
   if (website) return json({ ok: true }, 201);
 
   const saved = await store.saveQuote({ ...quote, deliveryZip: zip || undefined });
+  await notifyQuote(saved);
   return json({ ok: true, id: saved.id }, 201);
 }

@@ -1,3 +1,4 @@
+import { notifyPaid, notifyReview } from './email';
 import { valueToCents } from './pricing';
 import type { PayPalCapture } from './paypal';
 import type { Order, Store } from './store';
@@ -13,11 +14,15 @@ export async function settleCapture(store: Store, stale: Order, capture: PayPalC
   const amountMatches = capture.amount.currency_code === order.currency && valueToCents(capture.amount.value) === order.totalCents;
   if (capture.status === 'COMPLETED' && amountMatches) {
     await store.reduceStock(order.items);
-    return store.updateOrder(order.id, { status: 'paid', paypalCaptureId: capture.id, shippingAddress });
+    const paid = await store.updateOrder(order.id, { status: 'paid', paypalCaptureId: capture.id, shippingAddress });
+    await notifyPaid(paid);
+    return paid;
   }
   if (capture.status === 'PENDING' && amountMatches) {
     return store.updateOrder(order.id, { paypalCaptureId: capture.id, shippingAddress });
   }
   console.error(`Order ${order.id} needs review: capture ${capture.id} is ${capture.status} for ${capture.amount.value} ${capture.amount.currency_code}`);
-  return store.updateOrder(order.id, { status: 'payment_failed', paypalCaptureId: capture.id });
+  const failed = await store.updateOrder(order.id, { status: 'payment_failed', paypalCaptureId: capture.id });
+  await notifyReview(failed, `capture ${capture.id} is ${capture.status} for ${capture.amount.value} ${capture.amount.currency_code}`);
+  return failed;
 }

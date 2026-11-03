@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { money } from '@/lib/catalog';
 import { requireAdmin } from '@/lib/server/admin-auth';
+import { orderRef } from '@/lib/server/email';
 import { getStore } from '@/lib/server/store';
 import { updateOrderStatusAction } from '../../actions';
 
@@ -11,7 +12,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   if (!order) notFound();
   return (
     <>
-      <div className="admin-head"><h1>Order {order.id.slice(0, 8).toUpperCase()}</h1><span className="admin-pill">{order.status.replace('_', ' ')}</span></div>
+      <div className="admin-head"><h1>Order {orderRef(order.id)}</h1><span className="admin-pill">{order.status.replace('_', ' ')}</span></div>
       <div className="admin-card">
         <h2>Items</h2>
         <div className="admin-scroll">
