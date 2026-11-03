@@ -101,7 +101,7 @@ function ShopView({ category, search }: { category: string; search: string }) {
               </select>
             </div>
             {filtered.length ? (
-              <div className="products-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))' }}>
+              <div className="products-grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%,200px),1fr))' }}>
                 {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
               </div>
             ) : <EmptyState locale={locale} title={s.emptyTitle} body={s.emptyBody} btn={s.emptyBtn} />}
