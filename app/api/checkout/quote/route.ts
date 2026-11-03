@@ -3,6 +3,7 @@ import { isUsState } from '@/lib/tax';
 import { quoteOrder } from '@/lib/server/checkout';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { CartError, cartSchema } from '@/lib/server/pricing';
+import { approvedAccount } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
 
 const schema = z.object({ items: cartSchema, state: z.string().refine(isUsState), zip: z.string().trim().regex(/^\d{5}(-\d{4})?$/).optional().or(z.literal('')) });
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) return json({ error: 'Invalid request' }, 400);
   try {
-    const q = await quoteOrder(store, parsed.data.items, { state: parsed.data.state, zip: parsed.data.zip || undefined });
+    const q = await quoteOrder(store, parsed.data.items, { state: parsed.data.state, zip: parsed.data.zip || undefined }, await approvedAccount(store));
     return json({ subtotalCents: q.subtotalCents, shippingCents: q.shippingCents, taxCents: q.taxCents, totalCents: q.totalCents });
   } catch (e) {
     if (e instanceof CartError) return json({ error: e.message, code: e.code }, 400);

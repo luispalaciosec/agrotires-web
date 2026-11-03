@@ -1,7 +1,7 @@
 'use client';
 
 import { startTransition, useActionState, useState, type FormEvent } from 'react';
-import { changePasswordAction, forgotPasswordAction, saveAddressAction, signInAction, signUpAction, type AccountState } from '@/app/[locale]/account/actions';
+import { applyB2bAction, changePasswordAction, forgotPasswordAction, saveAddressAction, signInAction, signUpAction, type AccountState } from '@/app/[locale]/account/actions';
 import { US_STATES } from '@/lib/tax';
 import { useStore } from './store';
 import { Icon } from './ui';
@@ -118,6 +118,22 @@ export function AddressForm() {
         <button className="btn" disabled={pending}>{pending ? a.working : a.saveAddress}</button>
       </form>
     </details>
+  );
+}
+
+export function B2bForm() {
+  const { t, locale } = useStore();
+  const s = t.sales;
+  const [state, action, pending] = useActionState(applyB2bAction.bind(null, locale), empty);
+  if (state.notice) return <div className="notice notice-ok" role="status"><Icon name="check" size="sm" /> {s.b2bSent}</div>;
+  return (
+    <form onSubmit={submitWith(action)}>
+      <Feedback state={state} />
+      <Field id="b2b-company" name="company" label={s.b2bCompany} autoComplete="organization" maxLength={160} required />
+      <Field id="b2b-tax" name="taxId" label={s.b2bTaxId} maxLength={60} />
+      <div className="field"><label className="field-label" htmlFor="b2b-note">{s.b2bNote}</label><textarea className="textarea" id="b2b-note" name="note" rows={3} maxLength={1000} /></div>
+      <button className="btn" disabled={pending}>{pending ? t.auth.working : s.b2bApply}</button>
+    </form>
   );
 }
 

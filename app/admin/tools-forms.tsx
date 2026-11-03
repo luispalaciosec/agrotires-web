@@ -5,7 +5,7 @@ import { defaultContent, fillTemplate, templateProblem, type EmailLocale, type T
 import { CARRIERS, SHIPMENT_STAGES, SHIPMENT_STATUSES, STATUS_LABELS, type ShipmentStatus } from '@/lib/shipping';
 import { bpsToPercent, US_STATES } from '@/lib/tax';
 import type { Shipment, TaxRate } from '@/lib/server/store';
-import { addShippingZoneAction, importZipRatesAction, addShipmentEventAction, createShipmentAction, resetEmailTemplateAction, saveEmailTemplateAction, saveTaxRatesAction, sendTestEmailAction, type FormState } from './actions';
+import { createPayLinkAction, saveB2bDecisionAction, addShippingZoneAction, importZipRatesAction, addShipmentEventAction, createShipmentAction, resetEmailTemplateAction, saveEmailTemplateAction, saveTaxRatesAction, sendTestEmailAction, type FormState } from './actions';
 import { Messages } from './forms';
 
 const empty: FormState = {};
@@ -45,6 +45,46 @@ export function TaxForm({ rates }: { rates: TaxRate[] }) {
         })}
       </div>
       <div className="admin-actions" style={{ marginTop: 16 }}><button className="btn" disabled={pending}>{pending ? 'Saving…' : 'Save rates'}</button></div>
+    </form>
+  );
+}
+
+export function PayLinkForm({ quoteId, zip, name, site, locale }: { quoteId: string; zip?: string; name: string; site: string; locale?: string }) {
+  const [state, action, pending] = useActionState(createPayLinkAction.bind(null, quoteId), empty);
+  const token = state.notice?.startsWith('LINK:') ? state.notice.slice(5) : undefined;
+  if (token) {
+    const url = `${site}${locale === 'es' ? '/es' : ''}/pay/${token}`;
+    return <div className="admin-ok">Link created and emailed to the customer (if email is on):<br /><a className="text-link" href={url} target="_blank" rel="noopener noreferrer" style={{ overflowWrap: 'anywhere' }}>{url}</a></div>;
+  }
+  return (
+    <form onSubmit={submitWith(action)}>
+      <Messages state={state} />
+      <div className="form-grid">
+        <div className="field full-width"><label className="field-label" htmlFor="lines">Lines, one per line: Quantity | Description | Price each *</label><textarea className="textarea" id="lines" name="lines" rows={3} placeholder="2 | Rear tractor tire 18.4-38 | 689.00" required /></div>
+        <div className="field"><label className="field-label" htmlFor="freight">Freight (USD)</label><input className="text-input" id="freight" name="freight" inputMode="decimal" /></div>
+        <div className="field"><label className="field-label" htmlFor="name">Recipient *</label><input className="text-input" id="name" name="name" defaultValue={name} required /></div>
+        <div className="field full-width"><label className="field-label" htmlFor="line1">Address *</label><input className="text-input" id="line1" name="line1" required /></div>
+        <div className="field full-width"><label className="field-label" htmlFor="line2">Apartment, suite or unit</label><input className="text-input" id="line2" name="line2" /></div>
+        <div className="field"><label className="field-label" htmlFor="city">City *</label><input className="text-input" id="city" name="city" required /></div>
+        <div className="field"><label className="field-label" htmlFor="state">State *</label><select className="select-input" id="state" name="state" required defaultValue=""><option value="" disabled>Choose a state</option>{US_STATES.map(([c, n]) => <option key={c} value={c}>{n}</option>)}</select></div>
+        <div className="field"><label className="field-label" htmlFor="postalCode">ZIP code *</label><input className="text-input" id="postalCode" name="postalCode" defaultValue={zip} required /></div>
+      </div>
+      <div className="admin-actions"><button className="btn" disabled={pending}>{pending ? 'Creating…' : 'Create and send link'}</button></div>
+    </form>
+  );
+}
+
+export function B2bDecisionForm({ profileId, discount, terms, status }: { profileId: string; discount: number; terms: number; status: string }) {
+  const [state, action, pending] = useActionState(saveB2bDecisionAction.bind(null, profileId), empty);
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); const data = new FormData(e.currentTarget); const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null; if (submitter?.value) data.set('decision', submitter.value); startTransition(() => action(data)); }}>
+      <Messages state={state} />
+      <div className="b2b-row">
+        <label>Discount %<input className="text-input" name="discount" inputMode="decimal" defaultValue={discount / 100} aria-label="Discount percent" /></label>
+        <label>Days to pay<input className="text-input" name="terms" inputMode="numeric" defaultValue={terms} aria-label="Days to pay" /></label>
+        <button className="btn btn-light" name="decision" value="approve" disabled={pending}>{status === 'approved' ? 'Update' : 'Approve'}</button>
+        {status !== 'rejected' ? <button className="btn btn-danger" name="decision" value="reject" disabled={pending}>Reject</button> : null}
+      </div>
     </form>
   );
 }

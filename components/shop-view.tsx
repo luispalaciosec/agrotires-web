@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { getCategories, getCategory, money } from '@/lib/catalog';
 import { ProductCard } from './product';
+import { searchProducts } from '@/lib/search';
 import { useStore } from './store';
 import { EmptyState, Icon, PageHead } from './ui';
 
@@ -36,10 +37,8 @@ function ShopView({ category, search }: { category: string; search: string }) {
   const s = t.shop;
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    const list = products.filter((p) =>
+    const list = (search ? searchProducts(products, search) : products).filter((p) =>
       (!category || p.cat === category) &&
-      (!q || [p.name, p.alt, p.sku, p.cat, p.desc, p.brand, p.tireSize, p.equipmentMake, p.equipmentModel, ...p.tags].join(' ').toLowerCase().includes(q)) &&
       (!machine || p.tags.includes(machine)) &&
       (max === 'all' || p.price <= Number(max)));
     if (sort === 'priceasc') list.sort((a, b) => a.price - b.price);

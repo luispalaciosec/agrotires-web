@@ -5,7 +5,7 @@ import type { Fitment } from '../fitment';
 import type { Locale } from '../i18n';
 import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
-import type { Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { B2bAccount, Review, ReviewStatus, SalesRule, Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -100,7 +100,7 @@ export function productToRow(p: StoredProduct): ProductRow {
 type ItemRow = { sku: string; name: string; unit_price_cents: number; quantity: number; products: { slug: string } | null };
 type OrderRow = {
   id: string; email: string; status: Order['status']; subtotal_cents: number; shipping_cents: number; tax_cents: number; total_cents: number;
-  locale: Locale; shipping_address?: ShippingAddress | null; refunded_cents?: number; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
+  locale: Locale; shipping_address?: ShippingAddress | null; refunded_cents?: number; quote_id?: string | null; pay_token?: string | null; pay_expires_at?: string | null; invoice_due_at?: string | null; invoice_paid_at?: string | null; profile_id?: string | null; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
 };
 type QuoteRow = {
   id: string; name: string; email: string; phone: string | null; delivery_zip: string | null; topic: string; product_name: string | null;
@@ -121,6 +121,12 @@ export function orderFromRow(r: OrderRow): Order {
     locale: r.locale,
     shippingAddress: r.shipping_address ?? undefined,
     refundedCents: r.refunded_cents ?? 0,
+    profileId: r.profile_id ?? undefined,
+    quoteId: r.quote_id ?? undefined,
+    payToken: r.pay_token ?? undefined,
+    payExpiresAt: r.pay_expires_at ?? undefined,
+    invoiceDueAt: r.invoice_due_at ?? undefined,
+    invoicePaidAt: r.invoice_paid_at ?? undefined,
     paypalOrderId: r.paypal_order_id ?? undefined,
     paypalCaptureId: r.paypal_capture_id ?? undefined,
     createdAt: r.created_at,
@@ -143,6 +149,11 @@ export function shipmentFromRow(r: ShipmentRow): Shipment {
   };
 }
 const SHIPMENT_SELECT = '*, shipment_events(id, status, location, note, occurred_at)';
+
+type B2bRow = { profile_id: string; email: string; company: string; tax_id: string | null; note: string | null; status: B2bAccount['status']; discount_bps: number; terms_days: number; created_at: string };
+const b2bFromRow = (r: B2bRow): B2bAccount => ({ profileId: r.profile_id, email: r.email, company: r.company, taxId: r.tax_id ?? undefined, note: r.note ?? undefined, status: r.status, discountBps: r.discount_bps, termsDays: r.terms_days, createdAt: r.created_at });
+type ReviewRow = { id: string; order_id: string; rating: number; author: string; body: string; locale: string; status: ReviewStatus; created_at: string; products: { slug: string } | null };
+const reviewFromRow = (r: ReviewRow): Review[] => (r.products ? [{ id: r.id, productId: r.products.slug, orderId: r.order_id, rating: r.rating, author: r.author, body: r.body, locale: r.locale, status: r.status, createdAt: r.created_at }] : []);
 
 export function quoteFromRow(r: QuoteRow): Quote {
   return {
@@ -194,7 +205,7 @@ export class SupabaseStore implements Store {
 
   async createOrder(o: Omit<Order, 'id' | 'status' | 'createdAt'>) {
     const order = unwrap<OrderRow>(await this.db.from('orders').insert({
-      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency, locale: o.locale ?? 'en', shipping_address: o.shippingAddress ?? null, ...(o.profileId ? { profile_id: o.profileId } : {}),
+      email: o.email, subtotal_cents: o.subtotalCents, shipping_cents: o.shippingCents, tax_cents: o.taxCents, total_cents: o.totalCents, currency: o.currency, locale: o.locale ?? 'en', shipping_address: o.shippingAddress ?? null, ...(o.profileId ? { profile_id: o.profileId } : {}), ...(o.quoteId ? { quote_id: o.quoteId } : {}), ...(o.payToken ? { pay_token: o.payToken, pay_expires_at: o.payExpiresAt } : {}),
     }).select().single());
     const ids = unwrap<{ id: string; slug: string }[]>(await this.db.from('products').select('id, slug').in('slug', o.items.map((i) => i.productId)));
     const { error } = await this.db.from('order_items').insert(o.items.map((i) => ({
@@ -221,6 +232,68 @@ export class SupabaseStore implements Store {
   async getOrderByCaptureId(captureId: string) {
     const row = unwrap<OrderRow | null>(await this.db.from('orders').select(ORDER_SELECT).eq('paypal_capture_id', captureId).maybeSingle());
     return row ? orderFromRow(row) : undefined;
+  }
+
+  async getOrderByPayToken(token: string) {
+    const row = unwrap<OrderRow | null>(await this.db.from('orders').select(ORDER_SELECT).eq('pay_token', token).maybeSingle());
+    return row ? orderFromRow(row) : undefined;
+  }
+
+  async listSalesRules() {
+    type Row = { reorder_days: number | null; volume: SalesRule['volume']; products: { slug: string } | null };
+    return (unwrap<unknown[]>(await this.db.from('product_sales_rules').select('reorder_days, volume, products(slug)')) as Row[]).flatMap((r): SalesRule[] => (r.products ? [{ productId: r.products.slug, reorderDays: r.reorder_days ?? undefined, volume: r.volume ?? [] }] : []));
+  }
+
+  async saveSalesRule(rule: SalesRule) {
+    const product = unwrap<{ id: string }>(await this.db.from('products').select('id').eq('slug', rule.productId).single());
+    unwrap(await this.db.from('product_sales_rules').upsert({ product_id: product.id, reorder_days: rule.reorderDays ?? null, volume: rule.volume }).select('product_id'));
+  }
+
+  async getB2bAccount(profileId: string) {
+    const row = unwrap<B2bRow | null>(await this.db.from('b2b_accounts').select().eq('profile_id', profileId).maybeSingle());
+    return row ? b2bFromRow(row) : undefined;
+  }
+
+  async listB2bAccounts() {
+    return unwrap<B2bRow[]>(await this.db.from('b2b_accounts').select().order('created_at', { ascending: false })).map(b2bFromRow);
+  }
+
+  async saveB2bAccount(a: B2bAccount) {
+    unwrap(await this.db.from('b2b_accounts').upsert({ profile_id: a.profileId, email: a.email, company: a.company, tax_id: a.taxId ?? null, note: a.note ?? null, status: a.status, discount_bps: a.discountBps, terms_days: a.termsDays }).select('profile_id'));
+  }
+
+  async listReviews() {
+    return (unwrap<unknown[]>(await this.db.from('reviews').select('*, products(slug)').order('created_at', { ascending: false }).limit(500)) as ReviewRow[]).flatMap(reviewFromRow);
+  }
+
+  async listApprovedReviews(productId: string) {
+    const product = unwrap<{ id: string } | null>(await this.db.from('products').select('id').eq('slug', productId).maybeSingle());
+    if (!product) return [];
+    return (unwrap<unknown[]>(await this.db.from('reviews').select('*, products(slug)').eq('product_id', product.id).eq('status', 'approved').order('created_at', { ascending: false }).limit(100)) as ReviewRow[]).flatMap(reviewFromRow);
+  }
+
+  async saveReview(r: Pick<Review, 'productId' | 'orderId' | 'rating' | 'author' | 'body' | 'locale'>) {
+    const product = unwrap<{ id: string }>(await this.db.from('products').select('id').eq('slug', r.productId).single());
+    unwrap(await this.db.from('reviews').insert({ product_id: product.id, order_id: r.orderId, rating: r.rating, author: r.author, body: r.body, locale: r.locale ?? 'en' }).select('id'));
+  }
+
+  async moderateReview(id: string, status: ReviewStatus) {
+    if (!UUID.test(id)) return;
+    unwrap(await this.db.from('reviews').update({ status }).eq('id', id).select('id'));
+  }
+
+  async isOptedOut(email: string) {
+    return Boolean(unwrap<{ email: string } | null>(await this.db.from('email_optouts').select('email').eq('email', email.toLowerCase()).maybeSingle()));
+  }
+
+  async optOut(email: string) {
+    unwrap(await this.db.from('email_optouts').upsert({ email: email.toLowerCase() }).select('email'));
+  }
+
+  async claimReminder(key: string) {
+    // The primary key decides: of two runs at once, only one insert succeeds.
+    const rows = unwrap<{ key: string }[]>(await this.db.from('email_reminders').upsert({ key }, { onConflict: 'key', ignoreDuplicates: true }).select('key'));
+    return rows.length > 0;
   }
 
   async listShippingZones() {
@@ -352,6 +425,9 @@ export class SupabaseStore implements Store {
       ...(patch.paypalCaptureId ? { paypal_capture_id: patch.paypalCaptureId } : {}),
       ...(patch.shippingAddress ? { shipping_address: patch.shippingAddress } : {}),
       ...(patch.refundedCents !== undefined ? { refunded_cents: patch.refundedCents } : {}),
+      ...(patch.payToken ? { pay_token: patch.payToken, pay_expires_at: patch.payExpiresAt } : {}),
+      ...(patch.invoiceDueAt ? { invoice_due_at: patch.invoiceDueAt } : {}),
+      ...(patch.invoicePaidAt ? { invoice_paid_at: patch.invoicePaidAt } : {}),
     }).eq('id', id).select(ORDER_SELECT).single());
     return orderFromRow(row);
   }
@@ -426,7 +502,8 @@ export class SupabaseStore implements Store {
     // A real read: a head request on a missing table comes back without an error.
     const tools = await this.db.from('shipments').select('id').limit(1);
     const rates = await this.db.from('shipping_zones').select('id').limit(1);
+    const sales = await this.db.from('reviews').select('id').limit(1);
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error };
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error };
   }
 }

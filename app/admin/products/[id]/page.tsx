@@ -9,11 +9,12 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const id = decodeURIComponent((await params).id);
   const product = (await getStore()?.listProducts())?.find((p) => p.id === id);
   if (!product) notFound();
+  const rule = (await getStore()?.listSalesRules().catch(() => []))?.find((r) => r.productId === product.id);
   const fitment = ((await getStore()?.listFitment().catch(() => [])) ?? []).filter((f) => f.productId === product.id);
   return (
     <>
       <div className="admin-head"><h1>{product.name}</h1><DeleteProductButton id={product.id} name={product.name} /></div>
-      <ProductForm key={product.id} product={product} fitmentText={fitmentToText(fitment)} />
+      <ProductForm key={product.id} product={product} fitmentText={fitmentToText(fitment)} volumeText={rule?.volume.map((v) => `${v.minQty} | ${(v.priceCents / 100).toFixed(2)}`).join('\n') ?? ''} reorderDays={rule?.reorderDays} />
     </>
   );
 }

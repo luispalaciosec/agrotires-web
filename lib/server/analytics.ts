@@ -1,10 +1,12 @@
 import type { Order, Quote, Shipment, StoredProduct } from './store';
 
-const SOLD: Order['status'][] = ['paid', 'fulfilled', 'refunded'];
+const SOLD: Order['status'][] = ['paid', 'fulfilled', 'refunded', 'on_terms'];
 const DAY = 86_400_000;
 export const isSale = (o: Order) => SOLD.includes(o.status);
 
-const netCents = (o: Order) => o.totalCents - (o.refundedCents ?? 0);
+// An invoice on terms is a sale, but not money collected until it is paid.
+const unpaidInvoice = (o: Order) => Boolean(o.invoiceDueAt && !o.invoicePaidAt);
+const netCents = (o: Order) => (unpaidInvoice(o) ? 0 : o.totalCents - (o.refundedCents ?? 0));
 const sum = <T>(list: T[], value: (x: T) => number) => list.reduce((n, x) => n + value(x), 0);
 const dayKey = (time: number) => new Date(time).toISOString().slice(0, 10);
 
@@ -65,7 +67,7 @@ export function orderRoute(allOrders: Order[], shipments: Shipment[], days: numb
   const orders = allOrders.filter((o) => isSale(o) && new Date(o.createdAt).getTime() > from && new Date(o.createdAt).getTime() <= now);
   const byOrder = new Map(shipments.map((s) => [s.orderId, s]));
   const live = orders.filter((o) => o.status !== 'refunded');
-  const toShip = live.filter((o) => o.status === 'paid' && !byOrder.has(o.id)).length;
+  const toShip = live.filter((o) => (o.status === 'paid' || o.status === 'on_terms') && !byOrder.has(o.id)).length;
   const delivered = live.filter((o) => byOrder.get(o.id)?.status === 'delivered').length;
   const onTheWay = live.filter((o) => byOrder.has(o.id) && byOrder.get(o.id)!.status !== 'delivered').length;
   const pickup = live.filter((o) => o.status === 'fulfilled' && !byOrder.has(o.id)).length;
@@ -81,7 +83,8 @@ export function priorities(orders: Order[], quotes: Quote[], products: StoredPro
   const list: { count: number; label: string; href: string; tone: 'bad' | 'warn' | 'ok' }[] = [
     { count: orders.filter((o) => o.status === 'payment_failed' && o.paypalCaptureId).length, label: 'payments need review', href: '/admin/orders?status=payment_failed', tone: 'bad' },
     { count: shipments.filter((s) => s.status === 'exception').length, label: 'shipments with a problem', href: '/admin/shipments?status=exception', tone: 'bad' },
-    { count: orders.filter((o) => o.status === 'paid' && !shipped.has(o.id)).length, label: 'orders to ship', href: '/admin/orders?status=paid', tone: 'warn' },
+    { count: orders.filter((o) => unpaidInvoice(o) && new Date(o.invoiceDueAt!).getTime() < Date.now()).length, label: 'overdue invoices', href: '/admin/orders?status=on_terms', tone: 'bad' },
+    { count: orders.filter((o) => (o.status === 'paid' || o.status === 'on_terms') && !shipped.has(o.id)).length, label: 'orders to ship', href: '/admin/orders?status=paid', tone: 'warn' },
     { count: quotes.filter((q) => q.status === 'new').length, label: 'new quote requests', href: '/admin/quotes', tone: 'warn' },
     { count: products.filter((p) => p.active && p.stockQty === 0).length, label: 'visible products out of stock', href: '/admin/products', tone: 'warn' },
     { count: products.filter((p) => p.active && p.stockQty !== null && p.stockQty > 0 && p.stockQty <= LOW_STOCK).length, label: `products with ${LOW_STOCK} or fewer left`, href: '/admin/products', tone: 'ok' },

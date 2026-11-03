@@ -1,11 +1,14 @@
 import nodemailer from 'nodemailer';
 import { BUSINESS, money } from '../catalog';
 import { defaultContent, fillTemplate, templateDef, type EmailLocale, type TemplateContent, type TemplateKey } from '../email-templates';
-import { getStore, type Order, type Quote, type Shipment } from './store';
+import { sign } from './signed';
+import { getStore, type B2bAccount, type Order, type Quote, type Shipment } from './store';
 
 // Sends through the Google Workspace mailbox, so no DNS record has to change.
-export type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string };
+export type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string; headers?: Record<string, string> };
+export type CommercialKey = 'cart_reminder' | 'reorder_reminder' | 'review_request';
 
+export const publicSite = () => siteUrl();
 const siteUrl = () => (process.env.NEXT_PUBLIC_SITE_URL || `https://${BUSINESS.domain}`).replace(/\/$/, '');
 const teamEmail = () => process.env.EMAIL_TEAM || BUSINESS.contactEmail;
 // Sandbox payments must not read like real sales to the customer or the team.
@@ -113,6 +116,34 @@ async function deliver(key: TemplateKey, make: (c?: TemplateContent) => Mail) {
   if (content && !content.enabled) return;
   await send([make(content)]);
 }
+
+const langOf = (l: string | undefined): EmailLocale => (l === 'es' ? 'es' : 'en');
+
+// Promotional messages always carry the opt out and the postal address the law requires,
+// added here so an edit of the template cannot remove them.
+export const notifyCommercial = (key: CommercialKey, to: string, locale: string | undefined, vars: Record<string, string>) => deliver(key, (c) => {
+  const lang = langOf(locale);
+  const query = `e=${encodeURIComponent(to)}&s=${sign('unsubscribe', to.toLowerCase())}`;
+  const mail = build(key, lang, to, vars, c, teamEmail());
+  const footer = lang === 'es' ? 'Si no quieres recibir estos mensajes, date de baja aquí:' : 'To stop receiving these messages, unsubscribe here:';
+  return {
+    ...mail,
+    text: `${mail.text}\n\n--\n${footer}\n${siteUrl()}${lang === 'es' ? '/es' : ''}/unsubscribe?${query}\n\nAGROTIRES, ${process.env.BUSINESS_POSTAL_ADDRESS ?? ''}`,
+    headers: { 'List-Unsubscribe': `<${siteUrl()}/api/unsubscribe?${query}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+  };
+});
+
+export const notifyPayLink = (order: Order) => deliver('quote_payment_link', (c) => build('quote_payment_link', locale(order), order.email, { ...orderVars(order), pay_url: `${siteUrl()}${order.locale === 'es' ? '/es' : ''}/pay/${order.payToken}` }, c, teamEmail()));
+
+export const notifyTerms = (order: Order, account: B2bAccount) => {
+  const due = new Date(order.invoiceDueAt!).toLocaleDateString(order.locale === 'es' ? 'es-US' : 'en-US', { dateStyle: 'long' });
+  return Promise.all([
+    deliver('order_terms', (c) => build('order_terms', locale(order), order.email, { ...orderVars(order), due_date: due, terms_days: String(account.termsDays) }, c, teamEmail())),
+    deliver('terms_team', (c) => build('terms_team', 'en', teamEmail(), { order_ref: orderRef(order.id), total: usd(order.totalCents), company: account.company, due_date: due, admin_url: orderUrl(order.id) }, c, order.email)),
+  ]);
+};
+
+export const notifyB2bApproved = (account: B2bAccount, lang: EmailLocale) => deliver('b2b_approved', (c) => build('b2b_approved', lang, account.email, { company: account.company, discount: `${account.discountBps / 100}%`, terms_days: String(account.termsDays) }, c, teamEmail()));
 
 export const notifyWelcome = (to: string, name: string, lang: EmailLocale) => deliver('welcome', (c) => build('welcome', lang, to, { name: name || to, store_url: siteUrl() + (lang === 'es' ? '/es' : '') }, c, teamEmail()));
 export const notifyQuote = (q: Quote) => deliver('quote_team', (c) => quoteTeamMail(q, c));

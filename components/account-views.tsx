@@ -17,7 +17,7 @@ export function WishlistItems() {
     : <EmptyState locale={locale} title={t.wishlist.emptyTitle} body={t.wishlist.emptyBody} />;
 }
 
-type Totals = { shippingCents: number; taxCents: number; totalCents: number };
+type Totals = { subtotalCents: number; shippingCents: number; taxCents: number; totalCents: number };
 
 // Asks the server what this cart costs for this destination, so the preview always matches the charge.
 function useCheckoutTotals(cart: Record<string, number>, destination: { state: string; zip: string }) {
@@ -56,7 +56,7 @@ export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
   if (paid) {
     return (
       <main id="main-content">
-        <PageHead locale={locale} title={paid.status === 'paid' ? l.doneTitle : l.pendingTitle} desc={paid.status === 'paid' ? l.doneDesc : l.pendingDesc} crumbs={l.crumb} />
+        <PageHead locale={locale} title={paid.status === 'pending_payment' ? l.pendingTitle : l.doneTitle} desc={paid.status === 'on_terms' ? t.sales.termsDone : paid.status === 'paid' ? l.doneDesc : l.pendingDesc} crumbs={l.crumb} />
         <div className="content-narrow">
           <div className="form-card" role="status">
             <h2>{l.doneRef}: {paid.orderId.slice(0, 8).toUpperCase()}</h2>
@@ -93,6 +93,7 @@ export function CheckoutView({ paypal }: { paypal?: PayPalConfig }) {
           <aside className="checkout-summary">
             <h3>{l.summary}</h3>
             {lines}
+            {totals && totals.subtotalCents < Math.round(total * 100) ? <div className="checkout-line"><span>{t.sales.discount}</span><strong>−{money((Math.round(total * 100) - totals.subtotalCents) / 100)}</strong></div> : null}
             <div className="checkout-line"><span>{l.shipping}</span><strong>{totals ? money(totals.shippingCents / 100) : '—'}</strong></div>
             <div className="checkout-line"><span>{l.tax}</span><strong>{totals ? money(totals.taxCents / 100) : '—'}</strong></div>
             <div className="checkout-total"><span>{l.total}</span><span>{money(totals ? totals.totalCents / 100 : total)}</span></div>

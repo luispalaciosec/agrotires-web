@@ -9,7 +9,13 @@ import { fitmentLabel } from '@/lib/fitment';
 import { LOCALE_TAGS, isLocale, localePath, type Locale } from '@/lib/i18n';
 import { resolveLocale } from '@/lib/locale-params';
 import { getPublicProducts } from '@/lib/products';
+import { VolumePrices } from '@/components/sales-views';
+import { boughtTogether } from '@/lib/server/sales';
+import { getStore } from '@/lib/server/store';
 import { absolute, breadcrumbLd, languageAlternates } from '@/lib/seo';
+
+// Reviews refresh on moderation; the bought-together list follows new orders within the hour.
+export const revalidate = 3600;
 
 type Props = { params: Promise<{ locale: string; id: string }> };
 
@@ -35,6 +41,10 @@ export default async function ProductPage({ params }: Props) {
   if (!p || !c) notFound();
   const m = t.product;
   const href = (path: string) => localePath(locale, path);
+  const store = getStore();
+  const [reviews, orders] = await Promise.all([store?.listApprovedReviews(p.id).catch(() => []) ?? [], store?.listOrders().catch(() => []) ?? []]);
+  const together = boughtTogether(orders, p.id).flatMap((tid) => products.filter((x) => x.id === tid));
+  const average = reviews.length ? reviews.reduce((n, r) => n + r.rating, 0) / reviews.length : 0;
   const related = products.filter((x) => x.id !== p.id && (x.cat === p.cat || x.tags.some((tag) => p.tags.includes(tag)))).slice(0, 4);
   return (
     <main id="main-content">
@@ -49,6 +59,7 @@ export default async function ProductPage({ params }: Props) {
           description: p.desc,
           inLanguage: LOCALE_TAGS[locale],
           image: productImages(p).map((img) => (img.startsWith('https:') ? img : absolute(imageSrc(img)))),
+          ...(reviews.length ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: average.toFixed(1), reviewCount: reviews.length } } : {}),
           offers: { '@type': 'Offer', price: p.price, priceCurrency: 'USD', url: absolute(href(productHref(p.id))) },
         }} />
       )}
@@ -68,6 +79,8 @@ export default async function ProductPage({ params }: Props) {
             <p className="mini muted">{m.priceNote}</p>
             <p className="detail-intro">{p.desc}</p>
             <div className="notice"><Icon name="info" size="sm" /> {m.notice}</div>
+            {reviews.length ? <p className="rating-line" aria-label={t.sales.ratingLabel(average.toFixed(1), reviews.length)}><span className="stars" aria-hidden="true">{'★'.repeat(Math.round(average))}{'☆'.repeat(5 - Math.round(average))}</span> {average.toFixed(1)} · {t.sales.reviewCount(reviews.length)}</p> : null}
+            {p.volume?.length ? <VolumePrices tiers={p.volume} /> : null}
             <DetailActions id={p.id} />
             <Link className="text-link" href={href('/quote')} style={{ marginTop: 25 }}>{m.more} <Icon name="arrow" size="sm" /></Link>
             <div className="detail-assurances">
@@ -100,6 +113,30 @@ export default async function ProductPage({ params }: Props) {
           </div>
         </div>
       </div>
+      {reviews.length ? (
+        <section className="section">
+          <div className="container">
+            <h2 className="section-title">{t.sales.reviewsTitle}</h2>
+            <ul className="review-list">
+              {reviews.slice(0, 20).map((r) => (
+                <li key={r.id}>
+                  <span className="stars" aria-label={t.sales.starsLabel(r.rating)}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                  <p>{r.body}</p>
+                  <small>{r.author} · {t.sales.verifiedBuyer}</small>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ) : null}
+      {together.length ? (
+        <section className="section">
+          <div className="container">
+            <h2 className="section-title">{t.sales.together}</h2>
+            <div className="products-grid">{together.map((x) => <ProductCard key={x.id} product={x} />)}</div>
+          </div>
+        </section>
+      ) : null}
       <section className="section section-alt">
         <div className="container">
           <div className="section-top">

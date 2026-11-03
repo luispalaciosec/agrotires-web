@@ -11,6 +11,7 @@ const GROUPS: { title: string; links: { href: string; label: string; icon: strin
     { href: '/admin/shipments', label: 'Shipments', icon: 'truck' },
     { href: '/admin/quotes', label: 'Quote requests', icon: 'clipboard' },
     { href: '/admin/customers', label: 'Customers', icon: 'user' },
+    { href: '/admin/reviews', label: 'Reviews', icon: 'heart' },
   ] },
   { title: 'Catalog', links: [{ href: '/admin/products', label: 'Products', icon: 'box' }] },
   { title: 'Setup', links: [

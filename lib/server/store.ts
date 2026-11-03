@@ -10,7 +10,7 @@ import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
 import { SupabaseStore, supabaseConfigured } from './supabase-store';
 
 // Shapes mirror supabase/migrations/0001_store.sql so the database can replace the local driver.
-export type OrderStatus = 'pending_payment' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded' | 'payment_failed';
+export type OrderStatus = 'pending_payment' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded' | 'payment_failed' | 'on_terms';
 export type OrderItem = { productId: string; sku: string; name: string; unitPriceCents: number; quantity: number };
 export type ShippingAddress = { name: string; line1: string; line2?: string; city: string; state: string; postalCode: string; country: string };
 export type Order = {
@@ -27,11 +27,21 @@ export type Order = {
   shippingAddress?: ShippingAddress;
   refundedCents?: number;
   profileId?: string;
+  quoteId?: string;
+  payToken?: string;
+  payExpiresAt?: string;
+  invoiceDueAt?: string;
+  invoicePaidAt?: string;
   paypalOrderId?: string;
   paypalCaptureId?: string;
   createdAt: string;
 };
-export type OrderPatch = Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress' | 'refundedCents'>>;
+export type OrderPatch = Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress' | 'refundedCents' | 'payToken' | 'payExpiresAt' | 'invoiceDueAt' | 'invoicePaidAt'>>;
+export type SalesRule = { productId: string; reorderDays?: number; volume: { minQty: number; priceCents: number }[] };
+export type B2bStatus = 'pending' | 'approved' | 'rejected';
+export type B2bAccount = { profileId: string; email: string; company: string; taxId?: string; note?: string; status: B2bStatus; discountBps: number; termsDays: number; createdAt: string };
+export type ReviewStatus = 'pending' | 'approved' | 'rejected';
+export type Review = { id: string; productId: string; orderId: string; rating: number; author: string; body: string; locale?: string; status: ReviewStatus; createdAt: string };
 export type TaxRate = { state: string; rateBps: number; active: boolean; taxShipping?: boolean };
 export type TaxZipRate = { zip: string; rateBps: number; region?: string };
 export type ShippingZone = { id: string; name: string; states: string[]; baseCents: number; perLbCents: number; freeOverCents?: number; active: boolean };
@@ -76,6 +86,19 @@ export interface Store {
   deleteImage(img: string): Promise<void>;
   reduceStock(items: OrderItem[]): Promise<void>;
   restock(items: OrderItem[]): Promise<void>;
+  getOrderByPayToken(token: string): Promise<Order | undefined>;
+  listSalesRules(): Promise<SalesRule[]>;
+  saveSalesRule(rule: SalesRule): Promise<void>;
+  getB2bAccount(profileId: string): Promise<B2bAccount | undefined>;
+  listB2bAccounts(): Promise<B2bAccount[]>;
+  saveB2bAccount(account: B2bAccount): Promise<void>;
+  listReviews(): Promise<Review[]>;
+  listApprovedReviews(productId: string): Promise<Review[]>;
+  saveReview(review: Pick<Review, 'productId' | 'orderId' | 'rating' | 'author' | 'body' | 'locale'>): Promise<void>;
+  moderateReview(id: string, status: ReviewStatus): Promise<void>;
+  isOptedOut(email: string): Promise<boolean>;
+  optOut(email: string): Promise<void>;
+  claimReminder(key: string): Promise<boolean>;
   listShippingZones(): Promise<ShippingZone[]>;
   saveShippingZones(zones: ShippingZone[]): Promise<void>;
   getTaxZipRate(zip: string): Promise<TaxZipRate | undefined>;
@@ -100,7 +123,7 @@ export interface Store {
   addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }): Promise<Shipment>;
 }
 
-type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[] };
+type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[]; rules: SalesRule[]; b2b: B2bAccount[]; reviews: Review[]; optouts: string[]; reminders: string[] };
 
 const seedProducts = (): StoredProduct[] => demoProducts.map((p) => ({ ...p, stockQty: null, active: true, shippingClass: 'parcel', compatibilityVerified: false }));
 
@@ -111,9 +134,9 @@ class LocalFileStore implements Store {
   private async read(): Promise<Data> {
     try {
       const data = JSON.parse(await readFile(this.file, 'utf8'));
-      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], ...data, products: data.products ?? seedProducts() };
+      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], ...data, products: data.products ?? seedProducts() };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [] };
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [] };
       throw e;
     }
   }
@@ -217,6 +240,74 @@ class LocalFileStore implements Store {
 
   async deleteImage(img: string) {
     if (img.startsWith('/uploads/')) await rm(path.join(process.cwd(), 'public', 'uploads', path.basename(img)), { force: true });
+  }
+
+  async getOrderByPayToken(token: string) {
+    return (await this.read()).orders.find((o) => o.payToken === token);
+  }
+
+  async listSalesRules() {
+    return (await this.read()).rules;
+  }
+
+  saveSalesRule(rule: SalesRule) {
+    return this.write((d) => {
+      d.rules = [...d.rules.filter((r) => r.productId !== rule.productId), rule];
+    });
+  }
+
+  async getB2bAccount(profileId: string) {
+    return (await this.read()).b2b.find((a) => a.profileId === profileId);
+  }
+
+  async listB2bAccounts() {
+    return (await this.read()).b2b.slice().reverse();
+  }
+
+  saveB2bAccount(account: B2bAccount) {
+    return this.write((d) => {
+      d.b2b = [...d.b2b.filter((a) => a.profileId !== account.profileId), account];
+    });
+  }
+
+  async listReviews() {
+    return (await this.read()).reviews.slice().reverse();
+  }
+
+  async listApprovedReviews(productId: string) {
+    return (await this.read()).reviews.filter((r) => r.productId === productId && r.status === 'approved').reverse();
+  }
+
+  saveReview(review: Pick<Review, 'productId' | 'orderId' | 'rating' | 'author' | 'body' | 'locale'>) {
+    return this.write((d) => {
+      if (d.reviews.some((r) => r.orderId === review.orderId && r.productId === review.productId)) throw new Error('Already reviewed');
+      d.reviews.push({ ...review, id: randomUUID(), status: 'pending', createdAt: new Date().toISOString() });
+    });
+  }
+
+  moderateReview(id: string, status: ReviewStatus) {
+    return this.write((d) => {
+      const review = d.reviews.find((r) => r.id === id);
+      if (review) review.status = status;
+    });
+  }
+
+  async isOptedOut(email: string) {
+    return (await this.read()).optouts.includes(email.toLowerCase());
+  }
+
+  optOut(email: string) {
+    return this.write((d) => {
+      if (!d.optouts.includes(email.toLowerCase())) d.optouts.push(email.toLowerCase());
+    });
+  }
+
+  claimReminder(key: string) {
+    return this.write((d) => {
+      if (d.reminders.includes(key)) return false;
+      d.reminders.push(key);
+      return true;
+    });
   }
 
   async listShippingZones() {

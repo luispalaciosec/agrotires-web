@@ -68,7 +68,7 @@ async function shrinkPhoto(file: File, maxSide = 1600) {
   return new File([blob], 'photo.jpg', { type: 'image/jpeg' });
 }
 
-export function ProductForm({ product, fitmentText = '' }: { product?: StoredProduct; fitmentText?: string }) {
+export function ProductForm({ product, fitmentText = '', volumeText = '', reorderDays }: { product?: StoredProduct; fitmentText?: string; volumeText?: string; reorderDays?: number }) {
   const [kept, setKept] = useState<string[]>(() => (product ? productImages(product).filter(isUploadedImage) : []));
   const [previews, setPreviews] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState('');
@@ -193,6 +193,14 @@ export function ProductForm({ product, fitmentText = '' }: { product?: StoredPro
           <Text name="equipmentModel" label="Equipment model" value={product?.equipmentModel} />
         </div>
         <label className="admin-check"><input type="checkbox" name="compatibilityVerified" defaultChecked={product?.compatibilityVerified} /> Compatibility verified with supplier data</label>
+        <div className="field" style={{ marginTop: 10 }}>
+          <label className="field-label" htmlFor="volume">Volume prices, one per line: Quantity | Price each</label>
+          <textarea className="textarea" id="volume" name="volume" rows={2} defaultValue={volumeText} placeholder="5 | 650.00" />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="reorderDays">Reorder reminder after (days), for wear parts</label>
+          <input className="text-input" id="reorderDays" name="reorderDays" inputMode="numeric" defaultValue={reorderDays ?? ''} />
+        </div>
         <div className="field" style={{ marginTop: 10 }}>
           <label className="field-label" htmlFor="fitment">Machines it fits, one per line: Make | Model | Years</label>
           <textarea className="textarea" id="fitment" name="fitment" rows={4} defaultValue={fitmentText} placeholder={'John Deere | 6120M | 2015-2020\nCase IH | Puma 150 | 2012'} />

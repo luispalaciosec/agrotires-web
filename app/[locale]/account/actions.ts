@@ -113,6 +113,20 @@ export async function saveAddressAction(locale: Locale, _: AccountState, form: F
   return { notice: 'address_saved' };
 }
 
+export async function applyB2bAction(locale: Locale, _: AccountState, form: FormData): Promise<AccountState> {
+  const customer = await getCustomer();
+  const store = getStore();
+  if (!customer || !store) return { error: 'failed' };
+  const company = text(form, 'company').slice(0, 160);
+  if (!company) return { error: 'invalid' };
+  const existing = await store.getB2bAccount(customer.id);
+  // Asking again never changes prices or terms the team already set.
+  if (existing?.status === 'approved') return { error: 'invalid' };
+  await store.saveB2bAccount({ profileId: customer.id, email: customer.email, company, taxId: text(form, 'taxId').slice(0, 60) || undefined, note: text(form, 'note').slice(0, 1000) || undefined, status: 'pending', discountBps: 0, termsDays: 0, createdAt: new Date().toISOString() });
+  revalidatePath(localePath(locale, '/account'));
+  return { notice: 'address_saved' };
+}
+
 export async function deleteAddressAction(locale: Locale, id: string) {
   const customer = await getCustomer();
   if (!customer) return;

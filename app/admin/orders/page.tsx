@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/server/admin-auth';
 import { orderRef } from '@/lib/server/email';
 import { getStore, type OrderStatus } from '@/lib/server/store';
 
-const FILTERS: [OrderStatus | 'all', string][] = [['all', 'All'], ['paid', 'To ship'], ['fulfilled', 'Shipped'], ['pending_payment', 'Awaiting payment'], ['refunded', 'Refunded'], ['payment_failed', 'Failed'], ['cancelled', 'Cancelled']];
+const FILTERS: [OrderStatus | 'all', string][] = [['all', 'All'], ['paid', 'To ship'], ['on_terms', 'On terms'], ['fulfilled', 'Shipped'], ['pending_payment', 'Awaiting payment'], ['refunded', 'Refunded'], ['payment_failed', 'Failed'], ['cancelled', 'Cancelled']];
 const TONE: Partial<Record<OrderStatus, string>> = { pending_payment: 'off', cancelled: 'off', paid: 'warn', payment_failed: 'bad', refunded: 'off' };
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<{ status?: string; q?: string }> }) {

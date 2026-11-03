@@ -1,5 +1,5 @@
 // Every email the store sends. Shared by the server, which sends them, and the panel, which previews them.
-export type TemplateKey = 'welcome' | 'order_paid' | 'order_shipped' | 'order_out_for_delivery' | 'order_delivered' | 'order_refund' | 'order_team' | 'quote_team' | 'order_review';
+export type TemplateKey = 'quote_payment_link' | 'order_terms' | 'terms_team' | 'b2b_approved' | 'cart_reminder' | 'reorder_reminder' | 'review_request' | 'welcome' | 'order_paid' | 'order_shipped' | 'order_out_for_delivery' | 'order_delivered' | 'order_refund' | 'order_team' | 'quote_team' | 'order_review';
 export type EmailLocale = 'en' | 'es';
 export type TemplateContent = { enabled: boolean; subject_en: string; body_en: string; subject_es: string; body_es: string };
 
@@ -56,6 +56,13 @@ const SAMPLE = {
   customer_email: 'ana@example.com',
   detail: 'capture 8X2 is COMPLETED for 1.00 USD',
   store_url: 'https://agrotiresusa.com',
+  pay_url: 'https://agrotiresusa.com/pay/9fK2xLq0',
+  due_date: 'December 3, 2026',
+  terms_days: '30',
+  company: 'Ruiz Farms LLC',
+  discount: '10%',
+  product_url: 'https://agrotiresusa.com/product/filter-h7',
+  review_links: 'Rear Tractor Tire: https://agrotiresusa.com/review?order=1&product=tire',
 };
 const pick = (vars: Record<string, string>) => Object.fromEntries(Object.keys(vars).map((k) => [k, SAMPLE[k as keyof typeof SAMPLE]]));
 const def = (d: Omit<TemplateDef, 'sample'>): TemplateDef => ({ ...d, sample: pick(d.variables) });
@@ -72,6 +79,97 @@ export const EMAIL_TEMPLATES: TemplateDef[] = [
     body: {
       en: 'Hello {{name}},\n\nYour AGROTIRES account is ready. You can follow your orders and keep your farm essentials in one place.\n\n{{store_url}}',
       es: 'Hola {{name}}:\n\nTu cuenta de AGROTIRES está lista. Puedes seguir tus pedidos y tener tus esenciales para el campo en un solo lugar.\n\n{{store_url}}',
+    },
+  }),
+  def({
+    key: 'b2b_approved',
+    name: 'Business account approved',
+    stage: 'Account',
+    when: 'The team approves a business account',
+    audience: 'customer',
+    variables: { company: 'Company name', discount: 'Discount on list prices', terms_days: 'Days to pay on invoice, 0 if none' },
+    subject: { en: 'Your AGROTIRES business account is ready', es: 'Tu cuenta de empresa de AGROTIRES está lista' },
+    body: {
+      en: 'Your business account for {{company}} was approved.\n\nDiscount on list prices: {{discount}}\nDays to pay on invoice: {{terms_days}}\n\nSign in to your account to see your prices at checkout.',
+      es: 'Aprobamos tu cuenta de empresa para {{company}}.\n\nDescuento sobre precios de lista: {{discount}}\nDías para pagar a crédito: {{terms_days}}\n\nInicia sesión en tu cuenta para ver tus precios en el pago.',
+    },
+  }),
+  def({
+    key: 'quote_payment_link',
+    name: 'Quote ready to pay',
+    stage: 'Purchase',
+    when: 'The team creates a payment link from a quote',
+    audience: 'customer',
+    variables: { ...ORDER_VARS, pay_url: 'Link to pay this quote' },
+    subject: { en: 'Your AGROTIRES quote is ready: {{order_ref}}', es: 'Tu cotización de AGROTIRES está lista: {{order_ref}}' },
+    body: {
+      en: 'Your quote is ready.\n\n{{items}}\nSales tax: {{tax}} USD\nTotal: {{total}} USD\n\nShip to:\n{{ship_to}}\n\nPay securely here:\n{{pay_url}}\n\nReply to this email with any questions.',
+      es: 'Tu cotización está lista.\n\n{{items}}\nImpuesto de venta: {{tax}} USD\nTotal: {{total}} USD\n\nEnviar a:\n{{ship_to}}\n\nPaga de forma segura aquí:\n{{pay_url}}\n\nResponde a este correo si tienes preguntas.',
+    },
+  }),
+  def({
+    key: 'order_terms',
+    name: 'Order placed on terms',
+    stage: 'Purchase',
+    when: 'A business account places an order to pay later',
+    audience: 'customer',
+    variables: { ...ORDER_VARS, due_date: 'Date the invoice is due', terms_days: 'Days to pay' },
+    subject: { en: 'We received your order: {{order_ref}}', es: 'Recibimos tu pedido: {{order_ref}}' },
+    body: {
+      en: 'We received your order on your account terms.\n\nOrder reference: {{order_ref}}\n{{items}}\nTotal due: {{total}} USD\nDue date: {{due_date}}\n\nShip to:\n{{ship_to}}\n\nThe AGROTIRES team will contact you about delivery and payment.',
+      es: 'Recibimos tu pedido con el crédito de tu cuenta.\n\nReferencia del pedido: {{order_ref}}\n{{items}}\nTotal a pagar: {{total}} USD\nFecha límite: {{due_date}}\n\nEnviar a:\n{{ship_to}}\n\nEl equipo de AGROTIRES te contactará sobre la entrega y el pago.',
+    },
+  }),
+  def({
+    key: 'cart_reminder',
+    name: 'Unfinished checkout',
+    stage: 'Reminders',
+    when: 'A checkout was started a day ago and not paid',
+    audience: 'customer',
+    variables: { items: 'Products in that checkout', pay_url: 'Link to finish paying' },
+    subject: { en: 'You left an order unfinished', es: 'Dejaste un pedido sin terminar' },
+    body: {
+      en: 'You started an order at AGROTIRES and did not finish paying.\n\n{{items}}\n\nYou can finish it here:\n{{pay_url}}',
+      es: 'Empezaste un pedido en AGROTIRES y no terminaste de pagar.\n\n{{items}}\n\nPuedes terminarlo aquí:\n{{pay_url}}',
+    },
+  }),
+  def({
+    key: 'reorder_reminder',
+    name: 'Time to reorder',
+    stage: 'Reminders',
+    when: 'The days set on a wear part have passed since the purchase',
+    audience: 'customer',
+    variables: { product: 'Product bought', product_url: 'Link to the product' },
+    subject: { en: 'Time to check your {{product}}?', es: '¿Es hora de revisar tu {{product}}?' },
+    body: {
+      en: 'You bought {{product}} a while ago. If it is time to replace it, you can order it here:\n{{product_url}}',
+      es: 'Compraste {{product}} hace un tiempo. Si ya toca reemplazarlo, puedes pedirlo aquí:\n{{product_url}}',
+    },
+  }),
+  def({
+    key: 'review_request',
+    name: 'Ask for a review',
+    stage: 'Reminders',
+    when: 'An order was delivered five days ago',
+    audience: 'customer',
+    variables: { order_ref: 'Short order reference', review_links: 'One review link per product' },
+    subject: { en: 'How was your order {{order_ref}}?', es: '¿Qué tal tu pedido {{order_ref}}?' },
+    body: {
+      en: 'Your opinion helps other farmers choose. Tell us how it went:\n\n{{review_links}}',
+      es: 'Tu opinión ayuda a otros productores a elegir. Cuéntanos cómo te fue:\n\n{{review_links}}',
+    },
+  }),
+  def({
+    key: 'terms_team',
+    name: 'New order on terms',
+    stage: 'Team alerts',
+    when: 'A business account places an order to pay later',
+    audience: 'team',
+    variables: { order_ref: 'Short order reference', total: 'Order total', company: 'Company name', due_date: 'Date the invoice is due', admin_url: 'Link to the order in the panel' },
+    subject: { en: 'Order on terms {{order_ref}}: {{total}}', es: 'Order on terms {{order_ref}}: {{total}}' },
+    body: {
+      en: 'Company: {{company}}\nTotal: {{total}} USD\nDue: {{due_date}}\n\nPanel: {{admin_url}}',
+      es: 'Company: {{company}}\nTotal: {{total}} USD\nDue: {{due_date}}\n\nPanel: {{admin_url}}',
     },
   }),
   def({

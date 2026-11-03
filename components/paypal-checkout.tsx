@@ -37,7 +37,21 @@ export function PayPalCheckout({ config, onDone, onDestination }: { config: PayP
   const [error, setError] = useState('');
   const [freight, setFreight] = useState(false);
   const form = useRef<HTMLFormElement>(null);
-  const [account, setAccount] = useState<{ signedIn: boolean; email?: string; name?: string; addresses?: SavedAddress[] }>({ signedIn: false });
+  const [account, setAccount] = useState<{ signedIn: boolean; email?: string; name?: string; addresses?: SavedAddress[]; termsDays?: number }>({ signedIn: false });
+  const [placing, setPlacing] = useState(false);
+  const { t: messages } = useStore();
+  const placeOnTerms = async () => {
+    const f = form.current;
+    if (!f?.reportValidity()) return;
+    const d = Object.fromEntries(new FormData(f).entries()) as Record<string, string>;
+    setPlacing(true);
+    setError('');
+    const res = await fetch('/api/checkout/terms', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: d.email, locale, items: Object.entries(cart).map(([id, quantity]) => ({ id, quantity })), address: { name: d.name, line1: d.line1, line2: d.line2, city: d.city, state: d.state, postalCode: d.postalCode } }) }).catch(() => undefined);
+    const body = await res?.json().catch(() => undefined);
+    setPlacing(false);
+    if (res?.ok) onDone({ orderId: body.orderId, status: body.status, email: d.email });
+    else setError(body?.code === 'no_shipping' ? l.errNoShip : l.errStart);
+  };
   const reportDestination = () => {
     const f = form.current;
     if (f) onDestination({ state: (f.elements.namedItem('state') as HTMLSelectElement).value, zip: (f.elements.namedItem('postalCode') as HTMLInputElement).value.trim() });
@@ -181,6 +195,7 @@ export function PayPalCheckout({ config, onDone, onDestination }: { config: PayP
         </div>
       ) : null}
       <div id="paypal-buttons" ref={holder} />
+      {account.termsDays ? <button className="btn btn-light btn-block" type="button" style={{ marginTop: 12 }} disabled={placing} onClick={placeOnTerms}>{messages.sales.payOnTerms(account.termsDays)}</button> : null}
     </>
   );
 }

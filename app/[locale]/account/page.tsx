@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AddressForm, AuthForms, BuyAgain } from '@/components/account-forms';
+import { AddressForm, AuthForms, B2bForm, BuyAgain } from '@/components/account-forms';
 import { Icon, PageHead } from '@/components/ui';
 import { money } from '@/lib/catalog';
 import { LOCALE_TAGS, localePath } from '@/lib/i18n';
 import { resolveLocale, type LocaleParams } from '@/lib/locale-params';
 import { accountsEnabled, getCustomer } from '@/lib/server/customer';
-import { orderRef } from '@/lib/server/email';
+import { orderRef, publicSite } from '@/lib/server/email';
+import { reviewLink } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
 import { deleteAddressAction, signOutAction } from './actions';
 
@@ -55,9 +56,10 @@ export default async function AccountPage(props: LocaleParams & { searchParams: 
   }
 
   const store = getStore();
-  const [orders, addresses] = await Promise.all([
+  const [orders, addresses, b2b] = await Promise.all([
     store?.listCustomerOrders(customer.id, customer.emailConfirmed ? customer.email : undefined).catch(() => []) ?? [],
     store?.listAddresses(customer.id).catch(() => []) ?? [],
+    store?.getB2bAccount(customer.id).catch(() => undefined),
   ]);
   const shipments = await Promise.all(orders.map((o) => store?.getShipmentByOrder(o.id).catch(() => undefined)));
   const date = (iso: string) => new Date(iso).toLocaleDateString(LOCALE_TAGS[locale], { dateStyle: 'medium' });
@@ -84,6 +86,7 @@ export default async function AccountPage(props: LocaleParams & { searchParams: 
                     <div className="account-order-actions">
                       {shipment ? <Link className="btn btn-light" href={`${localePath(locale, '/track')}?code=${shipment.code}`}>{u.track} <Icon name="truck" size="sm" /></Link> : null}
                       <BuyAgain items={o.items.map((item) => ({ id: item.productId, quantity: item.quantity }))} />
+                      {['paid', 'fulfilled', 'on_terms'].includes(o.status) ? o.items.filter((item) => item.productId).slice(0, 3).map((item) => <a className="text-link" key={item.sku} href={reviewLink(publicSite(), locale, o.id, item.productId)}>{t.sales.reviewCta(item.name)}</a>) : null}
                     </div>
                   </li>
                 );
@@ -105,6 +108,16 @@ export default async function AccountPage(props: LocaleParams & { searchParams: 
             </ul>
           ) : <p>{u.noAddresses}</p>}
           <AddressForm />
+        </section>
+
+        <section className="form-card">
+          <h2>{t.sales.b2bTitle}</h2>
+          {b2b?.status === 'approved' ? <p>{t.sales.b2bApproved(b2b.company, b2b.discountBps / 100, b2b.termsDays)}</p> : b2b?.status === 'pending' ? <p>{t.sales.b2bPending(b2b.company)}</p> : (
+            <>
+              <p>{b2b?.status === 'rejected' ? t.sales.b2bRejected : t.sales.b2bIntro}</p>
+              <B2bForm />
+            </>
+          )}
         </section>
 
         <form action={signOutAction.bind(null, locale)}><button className="btn btn-light" type="submit">{u.signOut}</button></form>

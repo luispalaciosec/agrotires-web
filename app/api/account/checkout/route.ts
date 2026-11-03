@@ -7,5 +7,7 @@ export async function GET() {
   const customer = await getCustomer();
   if (!customer) return json({ signedIn: false });
   const addresses = await getStore()?.listAddresses(customer.id).catch(() => []);
-  return json({ signedIn: true, email: customer.email, name: customer.name, addresses: addresses ?? [] });
+  const account = await getStore()?.getB2bAccount(customer.id).catch(() => undefined);
+  const termsDays = account?.status === 'approved' ? account.termsDays : 0;
+  return json({ signedIn: true, email: customer.email, name: customer.name, addresses: addresses ?? [], termsDays });
 }

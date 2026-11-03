@@ -10,6 +10,9 @@ import { shipOrder, updateShipment } from '@/lib/server/shipments';
 import { fillTemplate, templateDef, templateProblem, type EmailLocale } from '@/lib/email-templates';
 import { CARRIERS, SHIPMENT_STATUSES, type ShipmentStatus } from '@/lib/shipping';
 import { parseFitmentText } from '@/lib/fitment';
+import { createPayLink, parseQuoteLines } from '@/lib/server/sales';
+import { notifyB2bApproved } from '@/lib/server/email';
+import { isUsState } from '@/lib/tax';
 import { percentToBps, US_STATES } from '@/lib/tax';
 import { dollarsToCents, parseZipRates, shippingStates } from '@/lib/server/rates-input';
 import { randomUUID } from 'node:crypto';
@@ -23,6 +26,19 @@ import { parseProduct, type ProductInput } from '@/lib/server/product-input';
 import { getStore, type OrderStatus, type QuoteStatus, type ShippingClass, type Store } from '@/lib/server/store';
 
 export type FormState = { error?: string; errors?: string[]; notice?: string };
+
+// Panel format, one per line: 5 | 650.00 means 5 or more at that price each.
+function parseVolumeText(text: string): { ok: true; volume: { minQty: number; priceCents: number }[] } | { ok: false; error: string } {
+  const volume = [];
+  for (const [i, line] of text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).entries()) {
+    const [qty, price] = line.split('|').map((p) => p.trim());
+    const minQty = Number(qty);
+    const priceCents = price ? dollarsToCents(price) : NaN;
+    if (!Number.isInteger(minQty) || minQty < 2 || Number.isNaN(priceCents)) return { ok: false, error: `Volume line ${i + 1}: use Quantity | Price, such as 5 | 650.00.` };
+    volume.push({ minQty, priceCents });
+  }
+  return { ok: true, volume };
+}
 
 const requireStore = () => {
   const store = getStore();
@@ -93,6 +109,14 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
   const photos = [...kept.keep, ...added];
   if (photos.length) result.product.img = photos[0];
   result.product.gallery = photos.slice(1);
+  const volume = parseVolumeText(text('volume'));
+  if (!volume.ok) {
+    await Promise.all(added.map((img) => removePhoto(store, img)));
+    return { error: volume.error };
+  }
+  const reorderText = text('reorderDays').trim();
+  const reorderDays = reorderText ? Number(reorderText) : undefined;
+  if (reorderDays !== undefined && (!Number.isInteger(reorderDays) || reorderDays < 1 || reorderDays > 3650)) return { error: 'Reorder days must be a whole number of days.' };
   const fitment = parseFitmentText(text('fitment'));
   if (!fitment.ok) {
     await Promise.all(added.map((img) => removePhoto(store, img)));
@@ -101,9 +125,10 @@ export async function saveProductAction(id: string | undefined, _: FormState, fo
   await store.saveProducts([result.product]);
   try {
     await store.saveFitment(result.product.id, fitment.fitment);
+    await store.saveSalesRule({ productId: result.product.id, reorderDays, volume: volume.volume });
   } catch (e) {
     console.error('Could not save fitment', e);
-    return { error: 'The product was saved, but not its machines. Run the migration 0009_shipping_fitment_accounts.sql and save again.' };
+    return { error: 'The product was saved, but not its machines or sales rules. Run the migrations 0009 and 0010 and save again.' };
   }
   // After the save, so a failure can never leave a product pointing at a deleted photo.
   await Promise.all(owned.filter((img) => !photos.includes(img)).map((img) => removePhoto(store, img)));
@@ -185,6 +210,65 @@ export async function saveTaxRatesAction(_: FormState, form: FormData): Promise<
   revalidatePath('/admin/taxes');
   refreshStorefront();
   return { notice: `Saved. ${rates.filter((r) => r.active).length} states charge tax at checkout.` };
+}
+
+export async function createPayLinkAction(quoteId: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const quote = await store.getQuote(quoteId);
+  if (!quote) return { error: 'Quote not found.' };
+  const v = (name: string) => String(form.get(name) ?? '').trim();
+  const lines = parseQuoteLines(v('lines'));
+  if (!lines.ok) return { error: lines.error };
+  const freightCents = v('freight') ? dollarsToCents(v('freight')) : 0;
+  if (Number.isNaN(freightCents)) return { error: 'Enter the freight in dollars, such as 450 or 450.00.' };
+  if (!v('name') || !v('line1') || !v('city') || !isUsState(v('state')) || !/^\d{5}(-\d{4})?$/.test(v('postalCode'))) return { error: 'Complete the delivery address.' };
+  try {
+    const order = await createPayLink(store, quote, { lines: lines.lines, freightCents, address: { name: v('name'), line1: v('line1'), line2: v('line2') || undefined, city: v('city'), state: v('state'), postalCode: v('postalCode') } });
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    return { notice: `LINK:${order.payToken}` };
+  } catch (e) {
+    console.error('Could not create payment link', e);
+    return { error: 'The link could not be created. If you have not yet, run the migration 0010_sales_tools.sql.' };
+  }
+}
+
+export async function saveB2bDecisionAction(profileId: string, _: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can decide business accounts.' };
+  const store = requireStore();
+  const account = await store.getB2bAccount(profileId);
+  if (!account) return { error: 'Account not found.' };
+  if (form.get('decision') === 'reject') {
+    await store.saveB2bAccount({ ...account, status: 'rejected', discountBps: 0, termsDays: 0 });
+    revalidatePath('/admin/customers');
+    return { notice: 'Application rejected.' };
+  }
+  const discountBps = percentToBps(String(form.get('discount') ?? ''));
+  const termsDays = Number(String(form.get('terms') ?? '0') || 0);
+  if (Number.isNaN(discountBps)) return { error: 'Enter a discount from 0 to 20 percent.' };
+  if (!Number.isInteger(termsDays) || termsDays < 0 || termsDays > 180) return { error: 'Enter the days to pay, from 0 to 180.' };
+  const updated = { ...account, status: 'approved' as const, discountBps, termsDays };
+  await store.saveB2bAccount(updated);
+  if (account.status !== 'approved') await notifyB2bApproved(updated, 'en');
+  revalidatePath('/admin/customers');
+  return { notice: `${account.company} approved.` };
+}
+
+export async function markInvoicePaidAction(orderId: string) {
+  await requireAdmin();
+  const store = requireStore();
+  const order = await store.getOrder(orderId);
+  if (!order?.invoiceDueAt || order.invoicePaidAt) return;
+  await store.updateOrder(orderId, { invoicePaidAt: new Date().toISOString(), ...(order.status === 'on_terms' ? { status: 'paid' as const } : {}) });
+  revalidatePath(`/admin/orders/${orderId}`);
+}
+
+export async function moderateReviewAction(id: string, status: 'approved' | 'rejected') {
+  await requireAdmin();
+  await requireStore().moderateReview(id, status);
+  revalidatePath('/admin/reviews');
+  refreshStorefront();
 }
 
 export async function importZipRatesAction(_: FormState, form: FormData): Promise<FormState> {
@@ -298,7 +382,7 @@ export async function createShipmentAction(orderId: string, _: FormState, form: 
   await requireAdmin();
   const store = requireStore();
   const order = await store.getOrder(orderId);
-  if (!order || order.status !== 'paid') return { error: 'Only a paid order can be shipped.' };
+  if (!order || (order.status !== 'paid' && order.status !== 'on_terms')) return { error: 'Only a paid order or one on terms can be shipped.' };
   const carrier = String(form.get('carrier') ?? '');
   if (!CARRIERS.includes(carrier)) return { error: 'Choose a carrier.' };
   try {

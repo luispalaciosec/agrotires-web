@@ -3,6 +3,7 @@ import { LOCALES } from '@/lib/i18n';
 import { isUsState } from '@/lib/tax';
 import { quoteOrder } from '@/lib/server/checkout';
 import { getCustomer } from '@/lib/server/customer';
+import { approvedAccount } from '@/lib/server/sales';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { createPayPalOrder, paymentsEnabled } from '@/lib/server/paypal';
 import { CartError, cartSchema } from '@/lib/server/pricing';
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
 
   try {
     const { address: a } = parsed.data;
-    const q = await quoteOrder(store, parsed.data.items, { state: a.state, zip: a.postalCode });
+    const q = await quoteOrder(store, parsed.data.items, { state: a.state, zip: a.postalCode }, await approvedAccount(store));
     // The account comes from the session, never from the request.
     const customer = await getCustomer();
     const order = await store.createOrder({ email: parsed.data.email, items: q.items, subtotalCents: q.subtotalCents, shippingCents: q.shippingCents, taxCents: q.taxCents, totalCents: q.totalCents, currency: 'USD', locale: parsed.data.locale, shippingAddress: { ...a, country: 'US' }, profileId: customer?.id });

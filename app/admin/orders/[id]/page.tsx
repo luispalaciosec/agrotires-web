@@ -6,7 +6,7 @@ import { refundableCents } from '@/lib/server/orders';
 import { carrierLink, STATUS_LABELS } from '@/lib/shipping';
 import { paymentsEnabled } from '@/lib/server/paypal';
 import { getStore } from '@/lib/server/store';
-import { updateOrderStatusAction } from '../../actions';
+import { markInvoicePaidAction, updateOrderStatusAction } from '../../actions';
 import { RefundForm } from '../../forms';
 import { CreateShipmentForm, ShipmentUpdateForm } from '../../tools-forms';
 
@@ -48,7 +48,14 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           {order.status === 'pending_payment' ? <form action={updateOrderStatusAction.bind(null, order.id, 'cancelled')}><button className="btn btn-danger">Cancel order</button></form> : null}
         </div>
       </div>
-      {shipment || order.status === 'paid' ? (
+      {order.invoiceDueAt ? (
+        <div className="admin-card">
+          <h2>Invoice on terms</h2>
+          <p style={{ fontSize: 13, margin: 0 }}>{order.invoicePaidAt ? <>Paid on {new Date(order.invoicePaidAt).toLocaleDateString('en-US', { dateStyle: 'medium' })}.</> : <>Due {new Date(order.invoiceDueAt).toLocaleDateString('en-US', { dateStyle: 'medium' })}. Not paid yet.</>}</p>
+          {order.invoicePaidAt ? null : <form action={markInvoicePaidAction.bind(null, order.id)} style={{ marginTop: 12 }}><button className="btn btn-light">Mark as paid</button></form>}
+        </div>
+      ) : null}
+      {shipment || order.status === 'paid' || order.status === 'on_terms' ? (
         <div className="admin-card">
           <h2>Shipment</h2>
           {shipment ? (
