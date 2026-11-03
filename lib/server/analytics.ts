@@ -59,6 +59,22 @@ export function salesReport(allOrders: Order[], days: number, now = Date.now()) 
   };
 }
 
+// Where the period's sold orders are now, for the route map on the dashboard.
+export function orderRoute(allOrders: Order[], shipments: Shipment[], days: number, now = Date.now()) {
+  const from = now - days * DAY;
+  const orders = allOrders.filter((o) => isSale(o) && new Date(o.createdAt).getTime() > from && new Date(o.createdAt).getTime() <= now);
+  const byOrder = new Map(shipments.map((s) => [s.orderId, s]));
+  const live = orders.filter((o) => o.status !== 'refunded');
+  const toShip = live.filter((o) => o.status === 'paid' && !byOrder.has(o.id)).length;
+  const delivered = live.filter((o) => byOrder.get(o.id)?.status === 'delivered').length;
+  const onTheWay = live.filter((o) => byOrder.has(o.id) && byOrder.get(o.id)!.status !== 'delivered').length;
+  const pickup = live.filter((o) => o.status === 'fulfilled' && !byOrder.has(o.id)).length;
+  const refunded = orders.length - live.length;
+  const total = orders.length;
+  const shippedShare = total ? Math.round(((toShip + onTheWay + delivered) / total) * 100) : 0;
+  return { total, toShip, onTheWay, delivered, pickup, refunded, shippedShare, otherShare: total ? 100 - shippedShare : 0 };
+}
+
 // What needs someone's attention right now, most urgent first.
 export function priorities(orders: Order[], quotes: Quote[], products: StoredProduct[], shipments: Shipment[]) {
   const shipped = new Set(shipments.map((s) => s.orderId));

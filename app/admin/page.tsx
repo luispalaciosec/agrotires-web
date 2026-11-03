@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Icon } from '@/components/ui';
 import { DEMO_CATALOG, money } from '@/lib/catalog';
 import { requireAdmin } from '@/lib/server/admin-auth';
-import { change, priorities, salesReport } from '@/lib/server/analytics';
+import { change, orderRoute, priorities, salesReport } from '@/lib/server/analytics';
 import { emailEnabled } from '@/lib/server/email';
 import { paymentsEnabled } from '@/lib/server/paypal';
 import { getStore } from '@/lib/server/store';
@@ -13,9 +13,8 @@ const usd = (cents: number) => money(cents / 100);
 
 function Delta({ now, before, days }: { now: number; before: number; days: number }) {
   const value = change(now, before);
-  if (value === undefined) return <small className="kpi-delta muted">No earlier sales to compare</small>;
-  const up = value >= 0;
-  return <small className="kpi-delta">{up ? '▲' : '▼'} {Math.abs(Math.round(value * 100))}% vs previous {days} days</small>;
+  if (value === undefined) return <small className="kpi-delta muted">Nothing to compare yet</small>;
+  return <small className="kpi-delta">{value >= 0 ? '▲' : '▼'} {Math.abs(Math.round(value * 100))}% vs previous {days}d</small>;
 }
 
 function RankedBars({ rows }: { rows: { label: string; detail?: string; cents: number }[] }) {
@@ -29,6 +28,15 @@ function RankedBars({ rows }: { rows: { label: string; detail?: string; cents: n
         </li>
       ))}
     </ul>
+  );
+}
+
+function RouteNode({ icon, label, count, href }: { icon: string; label: string; count: number; href: string }) {
+  return (
+    <Link className="route-node" href={href}>
+      <strong><Icon name={icon} size="xs" /> {label}</strong>
+      <span><b>{count}</b> {count === 1 ? 'order' : 'orders'}</span>
+    </Link>
   );
 }
 
@@ -47,76 +55,116 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ]);
   const report = salesReport(orders, days);
   const { current, previous } = report;
+  const route = orderRoute(orders, shipments, days);
   const todo = priorities(orders, quotes, products, shipments);
   const testing = process.env.PAYPAL_ENV !== 'live';
+  const netChange = change(current.netCents, previous.netCents);
 
   const readiness: [boolean, string, string][] = [
     [paymentsEnabled(), 'PayPal connected', 'Add the PayPal credentials in Vercel'],
     [emailEnabled(), 'Email connected', 'Add the mailbox app password in Vercel'],
     [rates.some((r) => r.active), 'Tax rates set', 'Enter the states where you collect tax'],
     [!DEMO_CATALOG, 'Real catalog live', 'Replace the sample catalog and demo notices'],
-    [process.env.PAYPAL_ENV === 'live', 'Live payments', 'Switch only after sandbox tests and owner approval'],
+    [process.env.PAYPAL_ENV === 'live', 'Live payments', 'Only after sandbox tests and owner approval'],
     [process.env.NEXT_PUBLIC_SITE_INDEXABLE === 'true', 'Open to search engines', 'Turn on at launch'],
   ];
-  const ready = readiness.filter(([done]) => done).length;
 
   return (
     <>
       <div className="admin-head">
-        <div>
-          <h1>Dashboard</h1>
-          {testing ? <p className="admin-sub"><Icon name="info" size="xs" /> Test mode: any order shown here comes from PayPal sandbox, not real sales.</p> : null}
-        </div>
-        <div className="admin-range" role="group" aria-label="Period">
-          {RANGES.map((d) => <Link key={d} href={`/admin?days=${d}`} className={d === days ? 'current' : undefined} aria-current={d === days ? 'true' : undefined}>{d} days</Link>)}
-        </div>
+        <h1>Dashboard</h1>
       </div>
+      <div className="dash">
+        <aside className="dash-panel">
+          <div className="dash-intro">Sales in: <span className="dash-chip">{days} days</span></div>
+          <p>{testing ? 'Test mode: orders here come from PayPal sandbox, not real sales.' : 'Money collected and what needs your attention.'}</p>
 
-      {todo.length ? (
-        <section className="admin-todo" aria-label="Needs attention">
-          {todo.map((t) => <Link key={t.label} href={t.href} className={`todo-item ${t.tone}`}><strong>{t.count}</strong> {t.label} <Icon name="arrow" size="xs" /></Link>)}
-        </section>
-      ) : null}
+          <div className="kpi-main"><div><strong>{usd(current.netCents)}</strong><span>Collected, after refunds</span></div><Delta now={current.netCents} before={previous.netCents} days={days} /></div>
+          <div className="kpi-main"><div><strong>{current.orders}</strong><span>Orders</span></div><Delta now={current.orders} before={previous.orders} days={days} /></div>
+          <div className="kpi-main"><div><strong>{usd(current.averageCents)}</strong><span>Average order</span></div><Delta now={current.averageCents} before={previous.averageCents} days={days} /></div>
+          <div className="kpi-main"><div><strong>{usd(current.refundedCents)}</strong><span>Refunded</span></div><small className="kpi-delta muted">Tax: {usd(current.taxCents)}</small></div>
 
-      <div className="kpis">
-        <div className="kpi kpi-main"><span>Collected, after refunds</span><strong>{usd(current.netCents)}</strong><Delta now={current.netCents} before={previous.netCents} days={days} /></div>
-        <div className="kpi"><span>Orders</span><strong>{current.orders}</strong><Delta now={current.orders} before={previous.orders} days={days} /></div>
-        <div className="kpi"><span>Average order</span><strong>{usd(current.averageCents)}</strong><Delta now={current.averageCents} before={previous.averageCents} days={days} /></div>
-        <div className="kpi"><span>Refunded</span><strong>{usd(current.refundedCents)}</strong><small className="kpi-delta muted">Sales tax collected: {usd(current.taxCents)}</small></div>
-      </div>
+          <section className="dash-block">
+            <h2>Needs attention</h2>
+            {todo.length ? (
+              <ul className="todo-list">
+                {todo.map((t) => <li key={t.label} className={t.tone}><Link className="todo-item" href={t.href}><span>{t.label}</span><strong>{t.count}</strong></Link></li>)}
+              </ul>
+            ) : <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>All clear for now.</p>}
+          </section>
 
-      <div className="admin-grid">
-        <section className="admin-card span-2">
-          <h2>Daily sales</h2>
-          {current.orders ? <SalesChart daily={report.daily} /> : <p className="muted admin-empty">No sales in the last {days} days. The chart fills in with the first paid order.</p>}
-        </section>
-        <section className="admin-card">
-          <h2>Launch readiness <small className="muted">{ready} of {readiness.length}</small></h2>
-          <ul className="readiness">
-            {readiness.map(([done, label, next]) => (
-              <li key={label} className={done ? 'done' : ''}>
-                <Icon name={done ? 'check' : 'clock'} size="sm" />
-                <span><strong>{label}</strong>{done ? null : <small>{next}</small>}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className="admin-card">
-          <h2>Top products</h2>
-          {report.topProducts.length ? <RankedBars rows={report.topProducts.map((p) => ({ label: p.name, detail: `${p.units} sold`, cents: p.cents }))} /> : <p className="muted admin-empty">No sales yet.</p>}
-        </section>
-        <section className="admin-card">
-          <h2>Top states</h2>
-          {report.topStates.length ? <RankedBars rows={report.topStates.map((s) => ({ label: s.state, cents: s.cents }))} /> : <p className="muted admin-empty">No sales yet.</p>}
-        </section>
-        <section className="admin-card">
-          <h2>Store at a glance</h2>
-          <ul className="glance">
-            <li><Link href="/admin/products"><strong>{products.filter((p) => p.active).length}</strong> visible products</Link></li>
-            <li><Link href="/admin/shipments"><strong>{shipments.filter((s) => s.status !== 'delivered').length}</strong> shipments on the way</Link></li>
-            <li><Link href="/admin/quotes"><strong>{quotes.filter((q) => q.status === 'new' || q.status === 'in_progress').length}</strong> open quote requests</Link></li>
-          </ul>
-        </section>
+          <section className="dash-block">
+            <h2>Launch readiness <small>{readiness.filter(([done]) => done).length} of {readiness.length}</small></h2>
+            <ul className="readiness">
+              {readiness.map(([done, label, next]) => (
+                <li key={label} className={done ? 'done' : ''}>
+                  <Icon name={done ? 'check' : 'clock'} size="sm" />
+                  <span><strong>{label}</strong>{done ? null : <small>{next}</small>}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <Link className="btn dash-cta" href="/admin/orders?status=paid">Go to orders to ship</Link>
+        </aside>
+
+        <div className="dash-main">
+          <section>
+            <div className="chart-head">
+              <div>
+                <div className="chart-title"><h2>Daily sales</h2><span className="chart-value">{usd(current.netCents)}</span></div>
+                <div className="chart-sub">
+                  {netChange === undefined ? null : <em>{netChange >= 0 ? '+' : '−'}{Math.abs(Math.round(netChange * 100))}%</em>}
+                  <span>Past {days} days</span>
+                </div>
+              </div>
+              <div className="admin-range" role="group" aria-label="Period">
+                {RANGES.map((d) => <Link key={d} href={`/admin?days=${d}`} className={d === days ? 'current' : undefined} aria-current={d === days ? 'true' : undefined}>{d}D</Link>)}
+              </div>
+            </div>
+            {current.orders ? <SalesChart daily={report.daily} /> : <p className="muted admin-empty">No sales in the last {days} days. The chart fills in with the first paid order.</p>}
+          </section>
+
+          <section className="route">
+            <h2>Your order route</h2>
+            <div className="route-head"><strong>{route.total} {route.total === 1 ? 'order' : 'orders'} sold</strong><strong>{route.delivered + route.pickup} completed</strong></div>
+            <div className="route-map">
+              <div className="route-lane">
+                <span className="route-share">{route.shippedShare}%</span>
+                <div className="route-nodes">
+                  <span className="route-link" />
+                  <RouteNode icon="box" label="To ship" count={route.toShip} href="/admin/orders?status=paid" />
+                  <span className="route-link" />
+                  <RouteNode icon="truck" label="On the way" count={route.onTheWay} href="/admin/shipments" />
+                  <span className="route-link" />
+                  <RouteNode icon="check" label="Delivered" count={route.delivered} href="/admin/shipments?status=delivered" />
+                  <span className="route-link" />
+                </div>
+              </div>
+              <div className="route-lane">
+                <span className="route-share">{route.otherShare}%</span>
+                <div className="route-nodes">
+                  <span className="route-link" />
+                  <RouteNode icon="user" label="Pickup" count={route.pickup} href="/admin/orders?status=fulfilled" />
+                  <span className="route-link" />
+                  <RouteNode icon="clock" label="Refunded" count={route.refunded} href="/admin/orders?status=refunded" />
+                  <span className="route-link" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="dash-more">
+            <section className="admin-card">
+              <h2>Top products</h2>
+              {report.topProducts.length ? <RankedBars rows={report.topProducts.map((p) => ({ label: p.name, detail: `${p.units} sold`, cents: p.cents }))} /> : <p className="muted admin-empty">No sales yet.</p>}
+            </section>
+            <section className="admin-card">
+              <h2>Top states</h2>
+              {report.topStates.length ? <RankedBars rows={report.topStates.map((s) => ({ label: s.state, cents: s.cents }))} /> : <p className="muted admin-empty">No sales yet.</p>}
+            </section>
+          </div>
+        </div>
       </div>
     </>
   );

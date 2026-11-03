@@ -18,6 +18,7 @@ const svgPaths: Record<string, string> = {
   minus: '<path d="M5 12h14"/>',
   check: '<path d="m4 12 5 5L20 6"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>',
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/>',
   truck: '<path d="M1 5h14v12H1zM15 9h4l4 4v4h-8z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/>',
   bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7V2z"/>',
   filter: '<path d="M4 7h16M7 12h10M10 17h4"/>',

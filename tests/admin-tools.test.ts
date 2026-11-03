@@ -7,7 +7,7 @@ import { POST as track } from '@/app/api/track/route';
 import { EMAIL_TEMPLATES, defaultContent, fillTemplate, templateDef, templateProblem } from '@/lib/email-templates';
 import { carrierLink } from '@/lib/shipping';
 import { bpsToPercent, percentToBps, taxCents } from '@/lib/tax';
-import { change, customerReport, priorities, salesReport, taxReport } from '@/lib/server/analytics';
+import { change, customerReport, orderRoute, priorities, salesReport, taxReport } from '@/lib/server/analytics';
 import { toCsv } from '@/lib/server/csv';
 import { brandedHtml, orderCustomerMail } from '@/lib/server/email';
 import { newShipmentCode, publicShipment, SHIPMENT_CODE, shipOrder, updateShipment } from '@/lib/server/shipments';
@@ -68,6 +68,17 @@ describe('sales report', () => {
     expect(list.map((p) => [p.count, p.tone])).toEqual([[1, 'bad'], [1, 'warn'], [1, 'warn']]);
     const shipped = { orderId: paid.id, status: 'in_transit' } as never;
     expect(priorities([paid], [], [], [shipped])).toEqual([]);
+  });
+
+  it('places each sold order on exactly one step of the route', () => {
+    const shipped = order({ status: 'fulfilled' });
+    const arrived = order({ status: 'fulfilled' });
+    const list = [order(), shipped, arrived, order({ status: 'fulfilled' }), order({ status: 'refunded' }), order({ status: 'pending_payment' }), order({ createdAt: daysAgo(90) })];
+    const shipments = [{ orderId: shipped.id, status: 'in_transit' }, { orderId: arrived.id, status: 'delivered' }] as never[];
+    const r = orderRoute(list, shipments, 30, NOW);
+    expect(r).toEqual({ total: 5, toShip: 1, onTheWay: 1, delivered: 1, pickup: 1, refunded: 1, shippedShare: 60, otherShare: 40 });
+    expect(r.toShip + r.onTheWay + r.delivered + r.pickup + r.refunded).toBe(r.total);
+    expect(orderRoute([], [], 30, NOW)).toMatchObject({ total: 0, shippedShare: 0, otherShare: 0 });
   });
 
   it('groups customers by email regardless of case', () => {

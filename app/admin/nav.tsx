@@ -13,7 +13,7 @@ const GROUPS: { title: string; links: { href: string; label: string; icon: strin
     { href: '/admin/customers', label: 'Customers', icon: 'user' },
   ] },
   { title: 'Catalog', links: [{ href: '/admin/products', label: 'Products', icon: 'box' }] },
-  { title: 'Settings', links: [
+  { title: 'Setup', links: [
     { href: '/admin/taxes', label: 'Taxes', icon: 'shield' },
     { href: '/admin/emails', label: 'Emails', icon: 'mail' },
   ] },
@@ -28,8 +28,9 @@ export function AdminNav() {
         <div className="admin-nav-group" key={g.title}>
           <span className="admin-nav-title">{g.title}</span>
           {g.links.map((l) => (
-            <Link key={l.href} href={l.href} className={current(l.href) ? 'current' : undefined} aria-current={current(l.href) ? 'page' : undefined}>
-              <Icon name={l.icon} size="sm" /> {l.label}
+            <Link key={l.href} href={l.href} aria-label={l.label} className={current(l.href) ? 'current' : undefined} aria-current={current(l.href) ? 'page' : undefined}>
+              <Icon name={l.icon} />
+              <span className="admin-tip" aria-hidden="true">{l.label}</span>
             </Link>
           ))}
         </div>
