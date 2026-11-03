@@ -1,5 +1,5 @@
 // Every email the store sends. Shared by the server, which sends them, and the panel, which previews them.
-export type TemplateKey = 'return_received' | 'return_update' | 'return_team' | 'low_stock_team' | 'quote_payment_link' | 'order_terms' | 'terms_team' | 'b2b_approved' | 'cart_reminder' | 'reorder_reminder' | 'review_request' | 'welcome' | 'order_paid' | 'order_shipped' | 'order_out_for_delivery' | 'order_delivered' | 'order_refund' | 'order_team' | 'quote_team' | 'order_review';
+export type TemplateKey = 'purchase_order' | 'return_received' | 'return_update' | 'return_team' | 'low_stock_team' | 'quote_payment_link' | 'order_terms' | 'terms_team' | 'b2b_approved' | 'cart_reminder' | 'reorder_reminder' | 'review_request' | 'welcome' | 'order_paid' | 'order_shipped' | 'order_out_for_delivery' | 'order_delivered' | 'order_refund' | 'order_team' | 'quote_team' | 'order_review';
 export type EmailLocale = 'en' | 'es';
 export type TemplateContent = { enabled: boolean; subject_en: string; body_en: string; subject_es: string; body_es: string };
 
@@ -57,6 +57,9 @@ const SAMPLE = {
   customer_email: 'ana@example.com',
   detail: 'capture 8X2 is COMPLETED for 1.00 USD',
   store_url: 'https://agrotiresusa.com',
+  po_ref: 'B7F2A91C',
+  supplier: 'Your supplier',
+  lines: '20 x AG-1 Rear Tire @ $410.00',
   return_url: 'https://agrotiresusa.com/returns?order=1',
   reason: 'Arrived damaged',
   status: 'Approved',
@@ -280,6 +283,19 @@ export const EMAIL_TEMPLATES: TemplateDef[] = [
     body: {
       en: 'Customer: {{customer_email}}\n{{items}}\nReason: {{reason}}\n\n{{note}}\n\nPanel: {{admin_url}}',
       es: 'Customer: {{customer_email}}\n{{items}}\nReason: {{reason}}\n\n{{note}}\n\nPanel: {{admin_url}}',
+    },
+  }),
+  def({
+    key: 'purchase_order',
+    name: 'Purchase order',
+    stage: 'Team alerts',
+    when: 'The team sends a supplier order',
+    audience: 'team',
+    variables: { po_ref: 'Supplier order reference', supplier: 'Supplier name', lines: 'One line per product, with cost', total: 'Order cost', note: 'Note, or a dash', ship_to: 'Warehouse address' },
+    subject: { en: 'Purchase order {{po_ref}} from AGROTIRES', es: 'Purchase order {{po_ref}} from AGROTIRES' },
+    body: {
+      en: 'Hello {{supplier}},\n\nPlease confirm this order and its delivery date.\n\nOrder: {{po_ref}}\n{{lines}}\nTotal: {{total}} USD\n\nDeliver to: AGROTIRES warehouse, {{ship_to}}\n\nNote: {{note}}\n\nThank you,\nAGROTIRES',
+      es: 'Hello {{supplier}},\n\nPlease confirm this order and its delivery date.\n\nOrder: {{po_ref}}\n{{lines}}\nTotal: {{total}} USD\n\nDeliver to: AGROTIRES warehouse, {{ship_to}}\n\nNote: {{note}}\n\nThank you,\nAGROTIRES',
     },
   }),
   def({

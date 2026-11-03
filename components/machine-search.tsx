@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fitmentMakes, fitmentModels, fitmentYears, fits } from '@/lib/fitment';
 import { ProductCard } from './product';
 import { useStore } from './store';
@@ -13,6 +13,20 @@ export function MachineSearch() {
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [year, setYear] = useState('');
+  // A saved machine in the account links here with its details.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const wanted = q.get('make')?.toLowerCase();
+    const foundMake = wanted && fitmentMakes(all).find((m) => m.toLowerCase() === wanted);
+    if (!foundMake) return;
+    setMake(foundMake);
+    const wantedModel = q.get('model')?.toLowerCase();
+    const foundModel = wantedModel && fitmentModels(all, foundMake).find((m) => m.toLowerCase() === wantedModel);
+    if (!foundModel) return;
+    setModel(foundModel);
+    const y = q.get('year');
+    if (y && fitmentYears(all, foundMake, foundModel).includes(Number(y))) setYear(y);
+  }, [all]);
   const results = make ? products.filter((p) => fits(p.fitment, make, model || undefined, year ? Number(year) : undefined)) : [];
   return (
     <div className="machine-search">

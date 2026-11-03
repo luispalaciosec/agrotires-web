@@ -1,6 +1,7 @@
 'use client';
 
 import { startTransition, useActionState, useState, type FormEvent } from 'react';
+import { panelText } from '@/lib/admin-i18n';
 import { PRODUCT_IMAGES, categories, imageSrc, isUploadedImage, productImages } from '@/lib/catalog';
 import type { StoredProduct } from '@/lib/server/store';
 import { deleteProductAction, importProductsAction, loginAction, refundOrderAction, saveProductAction, type FormState } from './actions';
@@ -229,13 +230,13 @@ export function ProductForm({ product, fitmentText = '', volumeText = '', reorde
   );
 }
 
-export function RefundForm({ orderId, refundableCents, refundedCents }: { orderId: string; refundableCents: number; refundedCents: number }) {
+export function RefundForm({ orderId, refundableCents, refundedCents, items }: { orderId: string; refundableCents: number; refundedCents: number; items: { sku: string; name: string; left: number }[] }) {
   const [state, action, pending] = useActionState(refundOrderAction.bind(null, orderId), empty);
   const left = (refundableCents / 100).toFixed(2);
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
-    if (!confirm(`Refund $${String(data.get('amount')).trim()} to the customer through PayPal? This cannot be undone.`)) return;
+    if (!confirm(panelText(`Refund $${String(data.get('amount')).trim()} to the customer through PayPal? This cannot be undone.`))) return;
     startTransition(() => action(data));
   };
   return (
@@ -248,7 +249,14 @@ export function RefundForm({ orderId, refundableCents, refundedCents }: { orderI
             <label className="field-label" htmlFor="amount">Amount to refund (USD), up to ${left}</label>
             <input key={left} className="text-input" id="amount" name="amount" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" defaultValue={left} required />
           </div>
-          <label className="admin-check"><input type="checkbox" name="restock" /> Return all items to stock (only when refunding everything that is left)</label>
+          {items.some((i) => i.left > 0) ? (
+            <fieldset className="restock-lines">
+              <legend className="field-label">How many units come back into stock?</legend>
+              {items.filter((i) => i.left > 0).map((i) => (
+                <label key={`${i.sku}-${i.left}`}><span data-raw>{i.name}</span><input className="text-input" type="number" name={`restock_${i.sku}`} min={0} max={i.left} defaultValue={0} /></label>
+              ))}
+            </fieldset>
+          ) : null}
           <div className="admin-actions" style={{ marginTop: 16 }}><button className="btn btn-danger" disabled={pending}>{pending ? 'Refunding…' : 'Refund through PayPal'}</button></div>
         </>
       ) : <p className="muted" style={{ margin: 0 }}>This order has been fully refunded.</p>}
@@ -258,7 +266,7 @@ export function RefundForm({ orderId, refundableCents, refundedCents }: { orderI
 
 export function DeleteProductButton({ id, name }: { id: string; name: string }) {
   return (
-    <form action={deleteProductAction.bind(null, id)} onSubmit={(e) => { if (!confirm(`Delete ${name}? This cannot be undone.`)) e.preventDefault(); }}>
+    <form action={deleteProductAction.bind(null, id)} onSubmit={(e) => { if (!confirm(panelText(`Delete ${name}? This cannot be undone.`))) e.preventDefault(); }}>
       <button className="btn btn-danger">Delete product</button>
     </form>
   );

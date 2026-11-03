@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import { BUSINESS, money } from '../catalog';
 import { defaultContent, fillTemplate, templateDef, type EmailLocale, type TemplateContent, type TemplateKey } from '../email-templates';
 import { sign } from './signed';
-import { getStore, type B2bAccount, type Order, type Quote, type Shipment } from './store';
+import { getStore, type B2bAccount, type Order, type PurchaseOrder, type Quote, type Shipment } from './store';
 
 // Sends through the Google Workspace mailbox, so no DNS record has to change.
 export type Mail = { to: string; subject: string; text: string; html?: string; replyTo?: string; headers?: Record<string, string> };
@@ -66,7 +66,7 @@ const trackUrl = (order: Order, code: string) => `${siteUrl()}${order.locale ===
 function build(key: TemplateKey, lang: EmailLocale, to: string, vars: Record<string, string>, content?: TemplateContent, replyTo?: string): Mail {
   const def = templateDef(key)!;
   const c = content ?? defaultContent(def);
-  const prefix = key === 'quote_team' ? '' : testPrefix();
+  const prefix = key === 'quote_team' || key === 'purchase_order' ? '' : testPrefix();
   return { to, replyTo, subject: prefix + fillTemplate(c[`subject_${lang}`], vars).replace(/[\r\n]+/g, ' '), text: fillTemplate(c[`body_${lang}`], vars) };
 }
 
@@ -153,6 +153,20 @@ export const notifyTerms = (order: Order, account: B2bAccount) => {
     deliver('terms_team', (c) => build('terms_team', 'en', teamEmail(), { order_ref: orderRef(order.id), total: usd(order.totalCents), company: account.company, due_date: due, admin_url: orderUrl(order.id) }, c, order.email)),
   ]);
 };
+
+export const purchaseOrderMail = (po: PurchaseOrder, c?: TemplateContent) => build('purchase_order', 'en', po.supplierEmail ?? '', {
+  po_ref: po.id.slice(0, 8).toUpperCase(),
+  supplier: po.supplier,
+  lines: po.items.map((i) => `${i.quantity} x ${i.sku} ${i.name} @ ${usd(i.unitCostCents)}`).join('\n'),
+  total: usd(po.items.reduce((n, i) => n + i.quantity * i.unitCostCents, 0)),
+  note: po.note || '-',
+  ship_to: BUSINESS.warehouse.lines.join(', '),
+}, c, teamEmail());
+
+export async function sendPurchaseOrder(po: PurchaseOrder) {
+  const content = await contentFor('purchase_order');
+  return send([purchaseOrderMail(po, content)]);
+}
 
 export const notifyB2bApproved = (account: B2bAccount, lang: EmailLocale) => deliver('b2b_approved', (c) => build('b2b_approved', lang, account.email, { company: account.company, discount: `${account.discountBps / 100}%`, terms_days: String(account.termsDays) }, c, teamEmail()));
 

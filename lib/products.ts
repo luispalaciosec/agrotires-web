@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { DEMO_CATALOG, localizeProduct, products as demoProducts, type Product } from './catalog';
 import type { Locale } from './i18n';
 import { getStore } from './server/store';
@@ -5,7 +6,13 @@ import { getStore } from './server/store';
 // Everything the storefront shows comes from here: only active, priced products, in the page's language.
 // The list is sent to the browser for the cart, which works for a small catalog;
 // a large one should fetch only the products in the cart.
-export async function getPublicProducts(locale: Locale = 'en'): Promise<Product[]> {
+// One read per request, however many parts of a page ask for the catalog.
+export const getPublicProducts = cache(loadPublicProducts);
+
+// What the browser needs for cards, the cart and search. Product pages read the full data on the server.
+export const browserProducts = (list: Product[]): Product[] => list.map(({ gallery: _, ...p }) => ({ ...p, desc: p.desc.slice(0, 200) }));
+
+async function loadPublicProducts(locale: Locale = 'en'): Promise<Product[]> {
   const demo = () => demoProducts.map((p) => localizeProduct(p, locale));
   const store = getStore();
   if (!store) return demo();

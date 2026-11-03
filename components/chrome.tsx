@@ -203,10 +203,22 @@ export function StoreChrome({ footer, children }: { footer: React.ReactNode; chi
 }
 
 export function NewsletterForm() {
-  const { toast, t } = useStore();
+  const { toast, t, locale } = useStore();
   const f = t.footer;
   return (
-    <form id="newsletter-form" className="newsletter-form" onSubmit={(e) => { e.preventDefault(); toast(f.toast); e.currentTarget.reset(); }}>
+    <form
+      id="newsletter-form"
+      className="newsletter-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        const d = new FormData(form);
+        const res = await fetch('/api/newsletter', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: d.get('email'), website: d.get('website'), locale }) }).catch(() => undefined);
+        toast(res?.ok ? f.toast : f.toastError);
+        if (res?.ok) form.reset();
+      }}
+    >
+      <input name="website" type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1 }} />
       <input aria-label={f.emailLabel} type="email" name="email" placeholder={f.emailPlaceholder} required />
       <button className="btn btn-yellow">{f.notify} <Icon name="arrow" size="sm" /></button>
     </form>

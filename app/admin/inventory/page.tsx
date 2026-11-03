@@ -4,7 +4,7 @@ import { requireAdmin } from '@/lib/server/admin-auth';
 import { lowStock } from '@/lib/server/operations';
 import { getStore } from '@/lib/server/store';
 import { receivePurchaseOrderAction } from '../actions';
-import { AddWarehouseForm, PurchaseOrderForm, StockAdjustForm } from '../ops-forms';
+import { AddWarehouseForm, PurchaseOrderForm, SendPurchaseOrderButton, StockAdjustForm } from '../ops-forms';
 
 export default async function InventoryPage() {
   await requireAdmin();
@@ -85,7 +85,12 @@ export default async function InventoryPage() {
                     <td>{po.items.map((i) => `${i.quantity} x ${i.sku}`).join(', ')}</td>
                     <td>{money(po.items.reduce((n, i) => n + i.quantity * i.unitCostCents, 0) / 100)}</td>
                     <td><span className={`admin-pill ${po.status === 'open' ? 'warn' : 'off'}`}>{po.status}</span></td>
-                    <td>{po.status === 'open' ? <form action={receivePurchaseOrderAction.bind(null, po.id)}><button className="btn btn-light">Receive</button></form> : null}</td>
+                    <td>
+                      {po.status === 'open' ? <div className="admin-actions" style={{ margin: 0 }}>
+                        {po.supplierEmail ? <SendPurchaseOrderButton id={po.id} sent={Boolean(po.sentAt)} /> : null}
+                        <form action={receivePurchaseOrderAction.bind(null, po.id)}><button className="btn btn-light">Receive</button></form>
+                      </div> : null}
+                    </td>
                   </tr>
                 ))}
                 {purchases.length ? null : <tr><td colSpan={6} className="muted">No supplier orders yet.</td></tr>}

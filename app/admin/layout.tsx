@@ -4,11 +4,13 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { fontClasses } from '@/lib/fonts';
 import { Icon } from '@/components/ui';
+import { cookies } from 'next/headers';
 import { currentAdmin, isAdmin } from '@/lib/server/admin-auth';
 import { priorities } from '@/lib/server/analytics';
 import { getStore } from '@/lib/server/store';
 import { logoutAction } from './actions';
 import { AdminNav } from './nav';
+import { PanelPreferences, PanelTranslator } from './preferences';
 import '../globals.css';
 import './admin.css';
 
@@ -19,9 +21,16 @@ const poppins = Poppins({ subsets: ['latin'], variable: '--font-admin', weight: 
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const signedIn = await isAdmin();
+  const saved = await cookies();
+  // Spanish first: it is the language of the team that runs the store.
+  const lang = saved.get('admin-lang')?.value === 'en' ? 'en' : 'es';
+  const theme = saved.get('admin-theme')?.value === 'dark' ? 'dark' : 'light';
   return (
-    <html lang="en" className={`${fontClasses} ${poppins.variable}`}>
-      <body>{signedIn ? <AdminShell>{children}</AdminShell> : children}</body>
+    <html lang={lang} data-admin-lang={lang} data-theme={theme} className={`${fontClasses} ${poppins.variable}`}>
+      <body>
+        <PanelTranslator lang={lang} />
+        {signedIn ? <AdminShell lang={lang} theme={theme}>{children}</AdminShell> : children}
+      </body>
     </html>
   );
 }
@@ -41,7 +50,7 @@ async function loadAlerts() {
   }
 }
 
-async function AdminShell({ children }: { children: ReactNode }) {
+async function AdminShell({ children, lang, theme }: { children: ReactNode; lang: string; theme: string }) {
   const [{ alerts, newQuotes }, user] = await Promise.all([loadAlerts(), currentAdmin()]);
   const pending = alerts.reduce((n, a) => n + a.count, 0);
   return (
@@ -56,6 +65,7 @@ async function AdminShell({ children }: { children: ReactNode }) {
           <input name="q" placeholder="Search orders, products, customers…" aria-label="Search the panel" autoComplete="off" />
         </form>
         <div className="admin-top-tools">
+          <PanelPreferences lang={lang} theme={theme} />
           <details className="admin-menu">
             <summary className="admin-icon-btn" aria-label={`${pending} items need attention`}>
               <Icon name="bell" size="sm" />

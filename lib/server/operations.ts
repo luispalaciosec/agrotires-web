@@ -43,6 +43,31 @@ export async function receivePurchaseOrder(store: Store, id: string, actor: stri
   return true;
 }
 
+export const remainingToRestock = (order: Order, sku: string) => (order.items.find((i) => i.sku === sku)?.quantity ?? 0) - (order.restocked?.[sku] ?? 0);
+
+// Only what the team says came back, and never more than was bought across all refunds of the order.
+export async function restockItems(store: Store, order: Order, picks: ReturnItem[], actor: string): Promise<{ ok: true; units: number } | { ok: false }> {
+  const chosen = picks.filter((p) => p.quantity > 0);
+  if (chosen.some((p) => !Number.isInteger(p.quantity) || p.quantity > remainingToRestock(order, p.sku))) return { ok: false };
+  if (!chosen.length) return { ok: true, units: 0 };
+  const products = await store.listProducts();
+  const restocked = { ...order.restocked };
+  for (const pick of chosen) {
+    const item = order.items.find((i) => i.sku === pick.sku)!;
+    const product = products.find((p) => p.id === item.productId);
+    restocked[pick.sku] = (restocked[pick.sku] ?? 0) + pick.quantity;
+    if (!product || product.stockQty === null) continue;
+    try {
+      await store.adjustStock({ productId: product.id, delta: pick.quantity, reason: 'return', note: order.id.slice(0, 8).toUpperCase(), actor });
+    } catch (e) {
+      console.error('Could not record the return in inventory', e);
+      await store.restock([{ ...item, quantity: pick.quantity }]);
+    }
+  }
+  await store.updateOrder(order.id, { restocked });
+  return { ok: true, units: chosen.reduce((n, p) => n + p.quantity, 0) };
+}
+
 const OPEN: ReturnStatus[] = ['requested', 'approved', 'received'];
 export const RETURN_FLOW: Partial<Record<ReturnStatus, ReturnStatus[]>> = { requested: ['approved', 'rejected'], approved: ['received', 'rejected'], received: ['closed'] };
 

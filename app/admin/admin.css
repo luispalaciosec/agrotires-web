@@ -285,3 +285,33 @@ a.route-node:hover{border-color:var(--a-mint)}
 @media(max-width:800px){.tax-row{grid-template-columns:minmax(0,1fr) 90px}.tax-row .admin-check{grid-column:auto;padding:0}}
 .b2b-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}.b2b-list li{display:flex;flex-wrap:wrap;gap:10px 20px;justify-content:space-between;align-items:center;border-top:1px solid var(--a-line);padding-top:14px;font-size:13px}.b2b-list li:first-child{border-top:0;padding-top:0}.b2b-list strong{color:var(--a-ink);font-weight:500}.b2b-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.b2b-row label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--a-muted)}.b2b-row .text-input{width:90px;margin:0;min-height:38px;padding:6px 9px}
 .plain-list{list-style:none;margin:0 0 12px;padding:0;font-size:13px;display:flex;flex-direction:column;gap:6px}.count-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:12.5px}.count-list li{display:flex;justify-content:space-between;gap:12px;overflow-wrap:anywhere}.count-list strong{font-weight:500;color:var(--a-ink)}.accounting-range{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}.accounting-range .field{margin:0}
+.restock-lines{border:1px solid var(--a-line);border-radius:10px;padding:12px;margin:0 0 14px;display:flex;flex-direction:column;gap:8px}.restock-lines label{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13px}.restock-lines .text-input{width:90px;margin:0;min-height:36px;padding:6px 9px}.admin-lang{font-size:11px;font-weight:600}
+/* Spanish is applied in the browser; the panel stays hidden for that first instant. */
+html[data-admin-lang=es]:not([data-admin-ready]) .admin,html[data-admin-lang=es]:not([data-admin-ready]) .admin-login{visibility:hidden}
+/* Dark theme */
+html[data-theme=dark] .admin,html[data-theme=dark] .admin-login{--a-bg:#0f1716;--a-surface:#172220;--a-line:#26342f;--a-field:#1e2b28;--a-ink:#eef4f1;--a-text:#c9d4d0;--a-muted:#92a19c;--a-tint:#17392f;--a-green:#46cda1;--a-deep:#7ce3c0;--a-mint:#2fc598;--a-shadow:0 8px 28px rgba(0,0,0,.28);--a-gradient:linear-gradient(90deg,#0a7a5e,#109a73);color-scheme:dark}
+html[data-theme=dark] body{background:#0f1716}
+html[data-theme=dark] .admin .route-node{background:var(--a-surface);border-color:var(--a-line);box-shadow:none}
+html[data-theme=dark] .admin .route-node strong{color:var(--a-text);border-color:var(--a-line)}
+html[data-theme=dark] .admin .route-node span{color:var(--a-muted)}
+html[data-theme=dark] .admin .route h2,html[data-theme=dark] .admin .route-head,html[data-theme=dark] .admin .route-head strong,html[data-theme=dark] .admin .chart-value{color:var(--a-muted)}
+html[data-theme=dark] .admin .route-map:before,html[data-theme=dark] .admin .route-map:after,html[data-theme=dark] .admin .route-link{background:#3a4a45}
+html[data-theme=dark] .admin .area-grid{stroke:#26342f}
+html[data-theme=dark] .admin .area-dot{border-color:#172220}
+html[data-theme=dark] .admin .area-tooltip{background:#eef4f1;color:#10201b}
+html[data-theme=dark] .admin .ranked-track{background:#26342f}
+html[data-theme=dark] .admin .admin-table tbody tr:hover td{background:#1e2b28}
+html[data-theme=dark] .admin .email-frame{background:#fff}
+html[data-theme=dark] .admin .email-frame p{color:#3d4a5c}
+html[data-theme=dark] .admin .notice{background:#2b2613;border-color:#4b4220;color:#e8d79b}
+html[data-theme=dark] .admin .admin-error{background:#3a1f1b;border-color:#5c2f28;color:#f3bcb2}
+html[data-theme=dark] .admin .admin-pill.warn{background:#3a3115;color:#ecd37e}
+html[data-theme=dark] .admin .admin-pill.bad{background:#3a1f1b;color:#f3bcb2}
+html[data-theme=dark] .admin .admin-pill.off{background:#26342f;color:#a9b6b1}
+html[data-theme=dark] .admin .todo-list .warn strong{background:#3a3115;color:#ecd37e}
+html[data-theme=dark] .admin .todo-list .bad strong{background:#3a1f1b;color:#f3bcb2}
+html[data-theme=dark] .admin .btn-danger{background:transparent;color:#f3bcb2;border-color:#5c2f28}
+html[data-theme=dark] .admin .text-input:focus,html[data-theme=dark] .admin .select-input:focus,html[data-theme=dark] .admin .textarea:focus{background:var(--a-field)}
+html[data-theme=dark] .admin .var-chips button{background:var(--a-tint);border-color:#275446;color:#a6ecd4}
+html[data-theme=dark] .admin-logo img{background:#fff;border-radius:50%}
+html[data-theme=dark] .admin .admin-tip{background:#eef4f1;color:#10201b}

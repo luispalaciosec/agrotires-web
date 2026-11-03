@@ -8,6 +8,7 @@ export const BUSINESS = Object.freeze({
   slogan: 'INSTANT SOLUTION',
   domain: 'agrotiresusa.com',
   contactEmail: 'contact@agrotiresusa.com',
+  warehouse: { lines: ['1350 NW 121 ST AVE', 'Miami, FL 33182'] },
 });
 
 export const DEMO_CATALOG = true;

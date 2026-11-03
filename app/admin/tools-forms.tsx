@@ -1,6 +1,7 @@
 'use client';
 
 import { startTransition, useActionState, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { panelText } from '@/lib/admin-i18n';
 import { defaultContent, fillTemplate, templateProblem, type EmailLocale, type TemplateContent, type TemplateDef } from '@/lib/email-templates';
 import { CARRIERS, SHIPMENT_STAGES, SHIPMENT_STATUSES, STATUS_LABELS, type ShipmentStatus } from '@/lib/shipping';
 import { bpsToPercent, US_STATES } from '@/lib/tax';
@@ -182,7 +183,7 @@ export function EmailEditor({ def, saved, canSend }: { def: TemplateDef; saved?:
               className="btn btn-light"
               disabled={resetting}
               onClick={() => {
-                if (!confirm('Go back to the original text of this email?')) return;
+                if (!confirm(panelText('Go back to the original text of this email?'))) return;
                 setContent(defaultContent(def));
                 startTransition(() => resetAction());
               }}

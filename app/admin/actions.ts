@@ -5,13 +5,13 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { isUploadedImage, productImages } from '@/lib/catalog';
 import { adminConfigured, currentAdmin, isFullAdmin, logIn, logOut, requireAdmin } from '@/lib/server/admin-auth';
-import { brandedHtml, emailEnabled, send } from '@/lib/server/email';
+import { brandedHtml, emailEnabled, send, sendPurchaseOrder } from '@/lib/server/email';
 import { shipOrder, updateShipment } from '@/lib/server/shipments';
 import { fillTemplate, templateDef, templateProblem, type EmailLocale } from '@/lib/email-templates';
 import { CARRIERS, SHIPMENT_STATUSES, type ShipmentStatus } from '@/lib/shipping';
 import { parseFitmentText } from '@/lib/fitment';
 import { createPayLink, parseQuoteLines } from '@/lib/server/sales';
-import { changeReturnStatus, parsePurchaseLines, receivePurchaseOrder } from '@/lib/server/operations';
+import { changeReturnStatus, parsePurchaseLines, receivePurchaseOrder, remainingToRestock, restockItems } from '@/lib/server/operations';
 import { notifyB2bApproved } from '@/lib/server/email';
 import { isUsState } from '@/lib/tax';
 import { percentToBps, US_STATES } from '@/lib/tax';
@@ -181,19 +181,20 @@ export async function refundOrderAction(id: string, _: FormState, form: FormData
   const order = await store.getOrder(id);
   if (!order) return { error: 'Order not found.' };
   const cents = valueToCents(String(form.get('amount') || '').trim());
-  const restock = form.get('restock') === 'on';
-  if (restock && cents !== refundableCents(order) && Number(form.get('expected')) === (order.refundedCents ?? 0)) return { error: 'Items can return to stock only when refunding everything that is left.' };
+  const picks = order.items.map((i) => ({ sku: i.sku, quantity: Number(form.get(`restock_${i.sku}`) || 0) }));
+  // Checked before any money moves.
+  if (picks.some((p) => !Number.isInteger(p.quantity) || p.quantity < 0 || p.quantity > remainingToRestock(order, p.sku))) return { error: 'Too many units for one of the products.' };
   const result = await issueRefund(store, { ...order, refundedCents: Number(form.get('expected')) }, cents);
   revalidatePath(`/admin/orders/${id}`);
   revalidatePath('/admin/orders');
   if (!result.ok) return { error: result.error };
-  await audit('Refunded order', order.id.slice(0, 8).toUpperCase(), `$${(cents / 100).toFixed(2)}${restock ? ", items back in stock" : ""}`);
-  if (restock) {
-    await store.restock(order.items);
-    refreshStorefront();
-  }
+  await audit('Refunded order', order.id.slice(0, 8).toUpperCase(), `$${(cents / 100).toFixed(2)}`);
+  const { name } = await currentAdmin();
+  const back = await restockItems(store, result.order, picks, name);
+  const restocked = back.ok && back.units > 0;
+  if (restocked) refreshStorefront();
   const amount = (cents / 100).toFixed(2);
-  return { notice: result.pending ? `PayPal is processing the $${amount} refund.` : `Refunded $${amount}.${restock ? ' Items returned to stock.' : ''}` };
+  return { notice: result.pending ? `PayPal is processing the $${amount} refund.` : `Refunded $${amount}.${restocked ? ' Items returned to stock.' : ''}` };
 }
 
 const ORDER_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
@@ -270,7 +271,7 @@ export async function saveB2bDecisionAction(profileId: string, _: FormState, for
   const updated = { ...account, status: 'approved' as const, discountBps, termsDays };
   await store.saveB2bAccount(updated);
   await audit('Approved business account', account.company, `${discountBps / 100}% off, ${termsDays} days`);
-  if (account.status !== 'approved') await notifyB2bApproved(updated, 'en');
+  if (account.status !== 'approved') await notifyB2bApproved(updated, account.locale === 'es' ? 'es' : 'en');
   revalidatePath('/admin/customers');
   return { notice: `${account.company} approved.` };
 }
@@ -489,7 +490,9 @@ export async function createPurchaseOrderAction(_: FormState, form: FormData): P
   const parsed = parsePurchaseLines(v('lines'), await store.listProducts());
   if (!parsed.ok) return { error: parsed.error };
   try {
-    const po = await store.createPurchaseOrder({ supplier: v('supplier').slice(0, 120), warehouseId: v('warehouse') || undefined, note: v('note').slice(0, 300) || undefined, items: parsed.items });
+    const supplierEmail = v('supplierEmail').slice(0, 200) || undefined;
+    if (supplierEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplierEmail)) return { error: 'Enter a valid email address.' };
+    const po = await store.createPurchaseOrder({ supplierEmail, supplier: v('supplier').slice(0, 120), warehouseId: v('warehouse') || undefined, note: v('note').slice(0, 300) || undefined, items: parsed.items });
     await audit('Created supplier order', po.id.slice(0, 8).toUpperCase(), po.supplier);
   } catch (e) {
     console.error('Could not create supplier order', e);
@@ -497,6 +500,20 @@ export async function createPurchaseOrderAction(_: FormState, form: FormData): P
   }
   revalidatePath('/admin/inventory');
   return { notice: 'Supplier order created. Receive it when the goods arrive.' };
+}
+
+export async function sendPurchaseOrderAction(id: string, _: FormState): Promise<FormState> {
+  await requireAdmin();
+  const store = requireStore();
+  const po = (await store.listPurchaseOrders()).find((p) => p.id === id);
+  if (!po?.supplierEmail) return { error: 'This order has no supplier email.' };
+  if (!emailEnabled()) return { error: 'The mailbox is not connected yet.' };
+  const { sent } = await sendPurchaseOrder(po);
+  if (!sent) return { error: 'The test could not be sent. Check the mailbox settings.' };
+  await store.markPurchaseOrderSent(id);
+  await audit('Sent supplier order', id.slice(0, 8).toUpperCase(), po.supplierEmail);
+  revalidatePath('/admin/inventory');
+  return { notice: 'Sent to supplier.' };
 }
 
 export async function receivePurchaseOrderAction(id: string) {

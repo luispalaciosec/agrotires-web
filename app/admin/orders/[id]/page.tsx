@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { money } from '@/lib/catalog';
 import { isFullAdmin, requireAdmin } from '@/lib/server/admin-auth';
 import { orderRef } from '@/lib/server/email';
+import { remainingToRestock } from '@/lib/server/operations';
 import { refundableCents } from '@/lib/server/orders';
 import { carrierLink, STATUS_LABELS } from '@/lib/shipping';
 import { paymentsEnabled } from '@/lib/server/paypal';
@@ -83,7 +84,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
       {order.paypalCaptureId && (order.status === 'paid' || order.status === 'fulfilled' || order.status === 'refunded') ? (
         <div className="admin-card">
           <h2>Refund</h2>
-          {!(await isFullAdmin()) ? <p className="muted" style={{ margin: 0 }}>Only an administrator can issue refunds.</p> : paymentsEnabled() ? <RefundForm orderId={order.id} refundableCents={refundableCents(order)} refundedCents={order.refundedCents ?? 0} /> : <p className="muted" style={{ margin: 0 }}>Refunds are available once PayPal is connected.</p>}
+          {!(await isFullAdmin()) ? <p className="muted" style={{ margin: 0 }}>Only an administrator can issue refunds.</p> : paymentsEnabled() ? <RefundForm orderId={order.id} refundableCents={refundableCents(order)} refundedCents={order.refundedCents ?? 0} items={order.items.map((i) => ({ sku: i.sku, name: i.name, left: remainingToRestock(order, i.sku) }))} /> : <p className="muted" style={{ margin: 0 }}>Refunds are available once PayPal is connected.</p>}
         </div>
       ) : null}
     </>

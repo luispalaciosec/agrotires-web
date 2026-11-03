@@ -6,7 +6,7 @@ import { StoreProvider } from '@/components/store';
 import { JsonLd } from '@/components/ui';
 import { fontClasses } from '@/lib/fonts';
 import { localeStaticParams, resolveLocale, type LocaleParams } from '@/lib/locale-params';
-import { getPublicProducts } from '@/lib/products';
+import { browserProducts, getPublicProducts } from '@/lib/products';
 import { baseMetadata, organizationLd, websiteLd } from '@/lib/seo';
 import '../globals.css';
 
@@ -28,7 +28,7 @@ export default async function StoreLayout({ children, ...props }: LocaleParams &
         <a className="skip-link" href="#main-content">{locale === 'es' ? 'Saltar al contenido principal' : 'Skip to main content'}</a>
         <JsonLd data={organizationLd} />
         <JsonLd data={websiteLd(locale)} />
-        <StoreProvider products={products} locale={locale}>
+        <StoreProvider products={browserProducts(products)} locale={locale}>
           <div id="app">
             <StoreChrome footer={<SiteFooter locale={locale} />}>{children}</StoreChrome>
           </div>

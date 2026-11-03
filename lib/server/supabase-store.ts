@@ -5,7 +5,7 @@ import type { Fitment } from '../fitment';
 import type { Locale } from '../i18n';
 import type { ShipmentStatus } from '../shipping';
 import { PHOTO_EXTENSIONS, type PhotoType } from './photo-upload';
-import type { AuditEntry, InventorySetting, PurchaseOrder, ReturnRequest, ReturnStatus, StockLevel, StockMovement, StoreEvent, TeamMember, Warehouse, B2bAccount, Review, ReviewStatus, SalesRule, Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
+import type { SavedMachine, Subscriber, AuditEntry, InventorySetting, PurchaseOrder, ReturnRequest, ReturnStatus, StockLevel, StockMovement, StoreEvent, TeamMember, Warehouse, B2bAccount, Review, ReviewStatus, SalesRule, Address, ProductFitment, ShippingZone, TaxZipRate, Shipment, ShipmentEvent, StoredTemplate, TaxRate, ShippingAddress, Order, OrderItem, OrderPatch, Quote, QuoteStatus, ShippingClass, Store, StoredProduct } from './store';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_IMAGE = 'agro-tires.webp';
@@ -100,7 +100,7 @@ export function productToRow(p: StoredProduct): ProductRow {
 type ItemRow = { sku: string; name: string; unit_price_cents: number; quantity: number; products: { slug: string } | null };
 type OrderRow = {
   id: string; email: string; status: Order['status']; subtotal_cents: number; shipping_cents: number; tax_cents: number; total_cents: number;
-  locale: Locale; shipping_address?: ShippingAddress | null; refunded_cents?: number; quote_id?: string | null; pay_token?: string | null; pay_expires_at?: string | null; invoice_due_at?: string | null; invoice_paid_at?: string | null; profile_id?: string | null; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
+  locale: Locale; shipping_address?: ShippingAddress | null; refunded_cents?: number; quote_id?: string | null; pay_token?: string | null; pay_expires_at?: string | null; invoice_due_at?: string | null; invoice_paid_at?: string | null; profile_id?: string | null; restocked?: Record<string, number> | null; paypal_order_id: string | null; paypal_capture_id: string | null; created_at: string; order_items?: ItemRow[];
 };
 type QuoteRow = {
   id: string; name: string; email: string; phone: string | null; delivery_zip: string | null; topic: string; product_name: string | null;
@@ -127,6 +127,7 @@ export function orderFromRow(r: OrderRow): Order {
     payExpiresAt: r.pay_expires_at ?? undefined,
     invoiceDueAt: r.invoice_due_at ?? undefined,
     invoicePaidAt: r.invoice_paid_at ?? undefined,
+    restocked: r.restocked ?? undefined,
     paypalOrderId: r.paypal_order_id ?? undefined,
     paypalCaptureId: r.paypal_capture_id ?? undefined,
     createdAt: r.created_at,
@@ -150,13 +151,13 @@ export function shipmentFromRow(r: ShipmentRow): Shipment {
 }
 const SHIPMENT_SELECT = '*, shipment_events(id, status, location, note, occurred_at)';
 
-type B2bRow = { profile_id: string; email: string; company: string; tax_id: string | null; note: string | null; status: B2bAccount['status']; discount_bps: number; terms_days: number; created_at: string };
-const b2bFromRow = (r: B2bRow): B2bAccount => ({ profileId: r.profile_id, email: r.email, company: r.company, taxId: r.tax_id ?? undefined, note: r.note ?? undefined, status: r.status, discountBps: r.discount_bps, termsDays: r.terms_days, createdAt: r.created_at });
+type B2bRow = { profile_id: string; email: string; company: string; tax_id: string | null; note: string | null; status: B2bAccount['status']; discount_bps: number; terms_days: number; created_at: string; locale?: string };
+const b2bFromRow = (r: B2bRow): B2bAccount => ({ profileId: r.profile_id, email: r.email, company: r.company, taxId: r.tax_id ?? undefined, note: r.note ?? undefined, status: r.status, discountBps: r.discount_bps, termsDays: r.terms_days, createdAt: r.created_at, locale: r.locale });
 type ReviewRow = { id: string; order_id: string; rating: number; author: string; body: string; locale: string; status: ReviewStatus; created_at: string; products: { slug: string } | null };
 const reviewFromRow = (r: ReviewRow): Review[] => (r.products ? [{ id: r.id, productId: r.products.slug, orderId: r.order_id, rating: r.rating, author: r.author, body: r.body, locale: r.locale, status: r.status, createdAt: r.created_at }] : []);
 
-type PoRow = { id: string; supplier: string; warehouse_id: string | null; status: PurchaseOrder['status']; note: string | null; items: PurchaseOrder['items']; created_at: string; received_at: string | null };
-const poFromRow = (r: PoRow): PurchaseOrder => ({ id: r.id, supplier: r.supplier, warehouseId: r.warehouse_id ?? undefined, status: r.status, note: r.note ?? undefined, items: r.items, createdAt: r.created_at, receivedAt: r.received_at ?? undefined });
+type PoRow = { supplier_email?: string | null; sent_at?: string | null; id: string; supplier: string; warehouse_id: string | null; status: PurchaseOrder['status']; note: string | null; items: PurchaseOrder['items']; created_at: string; received_at: string | null };
+const poFromRow = (r: PoRow): PurchaseOrder => ({ supplierEmail: r.supplier_email ?? undefined, sentAt: r.sent_at ?? undefined, id: r.id, supplier: r.supplier, warehouseId: r.warehouse_id ?? undefined, status: r.status, note: r.note ?? undefined, items: r.items, createdAt: r.created_at, receivedAt: r.received_at ?? undefined });
 type ReturnRow = { id: string; order_id: string; items: ReturnRequest['items']; reason: string; note: string | null; status: ReturnStatus; team_note: string | null; created_at: string };
 const returnFromRow = (r: ReturnRow): ReturnRequest => ({ id: r.id, orderId: r.order_id, items: r.items, reason: r.reason, note: r.note ?? undefined, status: r.status, teamNote: r.team_note ?? undefined, createdAt: r.created_at });
 
@@ -279,8 +280,50 @@ export class SupabaseStore implements Store {
     return unwrap<PoRow[]>(await this.db.from('purchase_orders').select().order('created_at', { ascending: false }).limit(200)).map(poFromRow);
   }
 
-  async createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'warehouseId' | 'note' | 'items'>) {
-    return poFromRow(unwrap<PoRow>(await this.db.from('purchase_orders').insert({ supplier: po.supplier, warehouse_id: po.warehouseId ?? null, note: po.note ?? null, items: po.items }).select().single()));
+  async markPurchaseOrderSent(id: string) {
+    unwrap(await this.db.from('purchase_orders').update({ sent_at: new Date().toISOString() }).eq('id', id).select('id'));
+  }
+
+  async addSubscriber(email: string, locale: string) {
+    const lower = email.toLowerCase();
+    unwrap(await this.db.from('email_optouts').delete().eq('email', lower).select('email'));
+    unwrap(await this.db.from('newsletter_subscribers').upsert({ email: lower, locale }, { onConflict: 'email', ignoreDuplicates: true }).select('email'));
+  }
+
+  async listSubscribers() {
+    type Row = { email: string; locale: string; created_at: string };
+    const [rows, out] = await Promise.all([this.db.from('newsletter_subscribers').select().order('created_at', { ascending: false }).limit(50000), this.db.from('email_optouts').select('email').limit(50000)]);
+    const opted = new Set(unwrap<{ email: string }[]>(out).map((o) => o.email));
+    return unwrap<Row[]>(rows).filter((r) => !opted.has(r.email)).map((r): Subscriber => ({ email: r.email, locale: r.locale, createdAt: r.created_at }));
+  }
+
+  async getWishlist(profileId: string) {
+    return unwrap<{ product_slug: string }[]>(await this.db.from('wishlists').select('product_slug').eq('profile_id', profileId).order('created_at')).map((r) => r.product_slug);
+  }
+
+  async setWishlist(profileId: string, items: string[]) {
+    const unique = [...new Set(items)];
+    unwrap(await this.db.from('wishlists').delete().eq('profile_id', profileId).select('product_slug'));
+    if (unique.length) unwrap(await this.db.from('wishlists').insert(unique.map((product_slug) => ({ profile_id: profileId, product_slug }))).select('product_slug'));
+  }
+
+  async listMachines(profileId: string) {
+    type Row = { id: string; make: string; model: string; year: number | null };
+    return unwrap<Row[]>(await this.db.from('saved_machines').select('id, make, model, year').eq('profile_id', profileId).order('created_at')).map((m): SavedMachine => ({ id: m.id, make: m.make, model: m.model, year: m.year ?? undefined }));
+  }
+
+  async saveMachine(profileId: string, m: Omit<SavedMachine, 'id'>) {
+    const row = unwrap<{ id: string }>(await this.db.from('saved_machines').insert({ profile_id: profileId, make: m.make, model: m.model, year: m.year ?? null }).select('id').single());
+    return { ...m, id: row.id };
+  }
+
+  async deleteMachine(profileId: string, id: string) {
+    if (!UUID.test(id)) return;
+    unwrap(await this.db.from('saved_machines').delete().eq('id', id).eq('profile_id', profileId).select('id'));
+  }
+
+  async createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'supplierEmail' | 'warehouseId' | 'note' | 'items'>) {
+    return poFromRow(unwrap<PoRow>(await this.db.from('purchase_orders').insert({ supplier_email: po.supplierEmail ?? null, supplier: po.supplier, warehouse_id: po.warehouseId ?? null, note: po.note ?? null, items: po.items }).select().single()));
   }
 
   async markPurchaseOrderReceived(id: string) {
@@ -387,7 +430,7 @@ export class SupabaseStore implements Store {
   }
 
   async saveB2bAccount(a: B2bAccount) {
-    unwrap(await this.db.from('b2b_accounts').upsert({ profile_id: a.profileId, email: a.email, company: a.company, tax_id: a.taxId ?? null, note: a.note ?? null, status: a.status, discount_bps: a.discountBps, terms_days: a.termsDays }).select('profile_id'));
+    unwrap(await this.db.from('b2b_accounts').upsert({ profile_id: a.profileId, email: a.email, company: a.company, tax_id: a.taxId ?? null, note: a.note ?? null, status: a.status, discount_bps: a.discountBps, terms_days: a.termsDays, ...(a.locale ? { locale: a.locale } : {}) }).select('profile_id'));
   }
 
   async listReviews() {
@@ -556,12 +599,20 @@ export class SupabaseStore implements Store {
       ...(patch.payToken ? { pay_token: patch.payToken, pay_expires_at: patch.payExpiresAt } : {}),
       ...(patch.invoiceDueAt ? { invoice_due_at: patch.invoiceDueAt } : {}),
       ...(patch.invoicePaidAt ? { invoice_paid_at: patch.invoicePaidAt } : {}),
+      ...(patch.restocked ? { restocked: patch.restocked } : {}),
     }).eq('id', id).select(ORDER_SELECT).single());
     return orderFromRow(row);
   }
 
   async listOrders() {
-    return unwrap<OrderRow[]>(await this.db.from('orders').select(ORDER_SELECT).order('created_at', { ascending: false }).limit(500)).map(orderFromRow);
+    // Page by page, so reports and accounting see every order, up to a safe limit.
+    const rows: OrderRow[] = [];
+    for (let from = 0; from < 50_000; from += 1000) {
+      const page = unwrap<OrderRow[]>(await this.db.from('orders').select(ORDER_SELECT).order('created_at', { ascending: false }).range(from, from + 999));
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+    return rows.map(orderFromRow);
   }
 
   async listQuotes() {
@@ -632,7 +683,8 @@ export class SupabaseStore implements Store {
     const rates = await this.db.from('shipping_zones').select('id').limit(1);
     const sales = await this.db.from('reviews').select('id').limit(1);
     const ops = await this.db.from('audit_log').select('id').limit(1);
+    const extras = await this.db.from('wishlists').select('product_slug').limit(1);
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error, migration0011: !ops.error };
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error, migration0011: !ops.error, migration0012: !extras.error };
   }
 }

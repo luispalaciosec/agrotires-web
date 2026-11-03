@@ -32,21 +32,24 @@ export type Order = {
   payExpiresAt?: string;
   invoiceDueAt?: string;
   invoicePaidAt?: string;
+  restocked?: Record<string, number>;
   paypalOrderId?: string;
   paypalCaptureId?: string;
   createdAt: string;
 };
-export type OrderPatch = Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress' | 'refundedCents' | 'payToken' | 'payExpiresAt' | 'invoiceDueAt' | 'invoicePaidAt'>>;
+export type OrderPatch = Partial<Pick<Order, 'status' | 'paypalOrderId' | 'paypalCaptureId' | 'shippingAddress' | 'refundedCents' | 'payToken' | 'payExpiresAt' | 'invoiceDueAt' | 'invoicePaidAt' | 'restocked'>>;
 export type SalesRule = { productId: string; reorderDays?: number; volume: { minQty: number; priceCents: number }[] };
 export type B2bStatus = 'pending' | 'approved' | 'rejected';
-export type B2bAccount = { profileId: string; email: string; company: string; taxId?: string; note?: string; status: B2bStatus; discountBps: number; termsDays: number; createdAt: string };
+export type B2bAccount = { profileId: string; email: string; company: string; taxId?: string; note?: string; status: B2bStatus; discountBps: number; termsDays: number; createdAt: string; locale?: string };
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 export type Review = { id: string; productId: string; orderId: string; rating: number; author: string; body: string; locale?: string; status: ReviewStatus; createdAt: string };
+export type Subscriber = { email: string; locale: string; createdAt: string };
+export type SavedMachine = { id: string; make: string; model: string; year?: number };
 export type Warehouse = { id: string; name: string; active: boolean };
 export type StockLevel = { productId: string; warehouseId: string; quantity: number };
 export type StockMovement = { id: string; productId: string; warehouseId?: string; delta: number; reason: string; note?: string; actor?: string; createdAt: string };
 export type InventorySetting = { productId: string; reorderPoint?: number; supplier?: string };
-export type PurchaseOrder = { id: string; supplier: string; warehouseId?: string; status: 'open' | 'received' | 'cancelled'; note?: string; items: { productId: string; sku: string; name: string; quantity: number; unitCostCents: number }[]; createdAt: string; receivedAt?: string };
+export type PurchaseOrder = { id: string; supplier: string; warehouseId?: string; status: 'open' | 'received' | 'cancelled'; note?: string; supplierEmail?: string; sentAt?: string; items: { productId: string; sku: string; name: string; quantity: number; unitCostCents: number }[]; createdAt: string; receivedAt?: string };
 export type ReturnStatus = 'requested' | 'approved' | 'rejected' | 'received' | 'closed';
 export type ReturnItem = { sku: string; quantity: number };
 export type ReturnRequest = { id: string; orderId: string; items: ReturnItem[]; reason: string; note?: string; status: ReturnStatus; teamNote?: string; createdAt: string };
@@ -107,7 +110,15 @@ export interface Store {
   listInventorySettings(): Promise<InventorySetting[]>;
   saveInventorySetting(setting: InventorySetting): Promise<void>;
   listPurchaseOrders(): Promise<PurchaseOrder[]>;
-  createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'warehouseId' | 'note' | 'items'>): Promise<PurchaseOrder>;
+  createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'supplierEmail' | 'warehouseId' | 'note' | 'items'>): Promise<PurchaseOrder>;
+  markPurchaseOrderSent(id: string): Promise<void>;
+  addSubscriber(email: string, locale: string): Promise<void>;
+  listSubscribers(): Promise<Subscriber[]>;
+  getWishlist(profileId: string): Promise<string[]>;
+  setWishlist(profileId: string, items: string[]): Promise<void>;
+  listMachines(profileId: string): Promise<SavedMachine[]>;
+  saveMachine(profileId: string, machine: Omit<SavedMachine, 'id'>): Promise<SavedMachine>;
+  deleteMachine(profileId: string, id: string): Promise<void>;
   markPurchaseOrderReceived(id: string): Promise<PurchaseOrder | undefined>;
   createReturn(r: Pick<ReturnRequest, 'orderId' | 'items' | 'reason' | 'note'>): Promise<ReturnRequest>;
   listReturns(): Promise<ReturnRequest[]>;
@@ -157,7 +168,7 @@ export interface Store {
   addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }): Promise<Shipment>;
 }
 
-type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[]; rules: SalesRule[]; b2b: B2bAccount[]; reviews: Review[]; optouts: string[]; reminders: string[]; warehouses: Warehouse[]; levels: StockLevel[]; movements: StockMovement[]; settings: InventorySetting[]; purchases: PurchaseOrder[]; returns: ReturnRequest[]; audit: AuditEntry[]; events: StoreEvent[] };
+type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[]; rules: SalesRule[]; b2b: B2bAccount[]; reviews: Review[]; optouts: string[]; reminders: string[]; warehouses: Warehouse[]; levels: StockLevel[]; movements: StockMovement[]; settings: InventorySetting[]; purchases: PurchaseOrder[]; returns: ReturnRequest[]; audit: AuditEntry[]; events: StoreEvent[]; subscribers: Subscriber[]; wishlists: Record<string, string[]>; machines: (SavedMachine & { profileId: string })[] };
 
 const seedProducts = (): StoredProduct[] => demoProducts.map((p) => ({ ...p, stockQty: null, active: true, shippingClass: 'parcel', compatibilityVerified: false }));
 
@@ -168,9 +179,9 @@ class LocalFileStore implements Store {
   private async read(): Promise<Data> {
     try {
       const data = JSON.parse(await readFile(this.file, 'utf8'));
-      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], ...data, products: data.products ?? seedProducts() };
+      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], subscribers: [], wishlists: {}, machines: [], ...data, products: data.products ?? seedProducts() };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [] };
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], subscribers: [], wishlists: {}, machines: [] };
       throw e;
     }
   }
@@ -340,7 +351,55 @@ class LocalFileStore implements Store {
     return (await this.read()).purchases.slice().reverse();
   }
 
-  createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'warehouseId' | 'note' | 'items'>) {
+  markPurchaseOrderSent(id: string) {
+    return this.write((d) => {
+      const po = d.purchases.find((x) => x.id === id);
+      if (po) po.sentAt = new Date().toISOString();
+    });
+  }
+
+  addSubscriber(email: string, locale: string) {
+    const lower = email.toLowerCase();
+    return this.write((d) => {
+      d.optouts = d.optouts.filter((e) => e !== lower);
+      if (!d.subscribers.some((s) => s.email === lower)) d.subscribers.push({ email: lower, locale, createdAt: new Date().toISOString() });
+    });
+  }
+
+  async listSubscribers() {
+    const d = await this.read();
+    return d.subscribers.filter((s) => !d.optouts.includes(s.email));
+  }
+
+  async getWishlist(profileId: string) {
+    return (await this.read()).wishlists[profileId] ?? [];
+  }
+
+  setWishlist(profileId: string, items: string[]) {
+    return this.write((d) => {
+      d.wishlists[profileId] = [...new Set(items)];
+    });
+  }
+
+  async listMachines(profileId: string) {
+    return (await this.read()).machines.filter((m) => m.profileId === profileId).map(({ profileId: _, ...m }) => m);
+  }
+
+  saveMachine(profileId: string, machine: Omit<SavedMachine, 'id'>) {
+    return this.write((d) => {
+      const saved = { ...machine, id: randomUUID() };
+      d.machines.push({ ...saved, profileId });
+      return saved;
+    });
+  }
+
+  deleteMachine(profileId: string, id: string) {
+    return this.write((d) => {
+      d.machines = d.machines.filter((m) => !(m.id === id && m.profileId === profileId));
+    });
+  }
+
+  createPurchaseOrder(po: Pick<PurchaseOrder, 'supplier' | 'supplierEmail' | 'warehouseId' | 'note' | 'items'>) {
     return this.write((d) => {
       const saved: PurchaseOrder = { ...po, id: randomUUID(), status: 'open', createdAt: new Date().toISOString() };
       d.purchases.push(saved);

@@ -13,7 +13,7 @@ import { rateLimited } from '@/lib/server/http';
 import { getStore } from '@/lib/server/store';
 
 // Codes the page turns into text in the visitor's language.
-export type AccountState = { error?: 'invalid' | 'credentials' | 'busy' | 'weak' | 'failed' | 'mismatch'; notice?: 'check_email' | 'reset_sent' | 'password_changed' | 'address_saved' };
+export type AccountState = { error?: 'invalid' | 'credentials' | 'busy' | 'weak' | 'failed' | 'mismatch'; notice?: 'check_email' | 'reset_sent' | 'password_changed' | 'address_saved' | 'machine_saved' };
 
 const ip = async () => (await headers()).get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
 const site = async () => {
@@ -122,9 +122,31 @@ export async function applyB2bAction(locale: Locale, _: AccountState, form: Form
   const existing = await store.getB2bAccount(customer.id);
   // Asking again never changes prices or terms the team already set.
   if (existing?.status === 'approved') return { error: 'invalid' };
-  await store.saveB2bAccount({ profileId: customer.id, email: customer.email, company, taxId: text(form, 'taxId').slice(0, 60) || undefined, note: text(form, 'note').slice(0, 1000) || undefined, status: 'pending', discountBps: 0, termsDays: 0, createdAt: new Date().toISOString() });
+  await store.saveB2bAccount({ profileId: customer.id, email: customer.email, company, taxId: text(form, 'taxId').slice(0, 60) || undefined, note: text(form, 'note').slice(0, 1000) || undefined, status: 'pending', discountBps: 0, termsDays: 0, createdAt: new Date().toISOString(), locale });
   revalidatePath(localePath(locale, '/account'));
   return { notice: 'address_saved' };
+}
+
+export async function saveMachineAction(locale: Locale, _: AccountState, form: FormData): Promise<AccountState> {
+  const customer = await getCustomer();
+  const store = getStore();
+  if (!customer || !store) return { error: 'failed' };
+  const make = text(form, 'make').slice(0, 80);
+  const model = text(form, 'model').slice(0, 80);
+  const yearText = text(form, 'year');
+  const year = yearText ? Number(yearText) : undefined;
+  if (!make || !model || (year !== undefined && (!Number.isInteger(year) || year < 1900 || year > 2100))) return { error: 'invalid' };
+  if ((await store.listMachines(customer.id)).length >= 20) return { error: 'invalid' };
+  await store.saveMachine(customer.id, { make, model, year });
+  revalidatePath(localePath(locale, '/account'));
+  return { notice: 'machine_saved' };
+}
+
+export async function deleteMachineAction(locale: Locale, id: string) {
+  const customer = await getCustomer();
+  if (!customer) return;
+  await getStore()?.deleteMachine(customer.id, id);
+  revalidatePath(localePath(locale, '/account'));
 }
 
 export async function deleteAddressAction(locale: Locale, id: string) {

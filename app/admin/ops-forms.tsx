@@ -2,7 +2,7 @@
 
 import { startTransition, useActionState, type FormEvent } from 'react';
 import type { ReturnStatus } from '@/lib/server/store';
-import { addWarehouseAction, adjustStockAction, createPurchaseOrderAction, setRoleAction, updateReturnAction, type FormState } from './actions';
+import { sendPurchaseOrderAction, addWarehouseAction, adjustStockAction, createPurchaseOrderAction, setRoleAction, updateReturnAction, type FormState } from './actions';
 import { Messages } from './forms';
 
 const empty: FormState = {};
@@ -65,10 +65,21 @@ export function PurchaseOrderForm({ warehouses }: { warehouses: Option[] }) {
     <form key={state.notice} onSubmit={submitWith(action)}>
       <Messages state={state} />
       <div className="field"><label className="field-label" htmlFor="po-supplier">Supplier *</label><input className="text-input" id="po-supplier" name="supplier" maxLength={120} required /></div>
+      <div className="field"><label className="field-label" htmlFor="po-email">Supplier email</label><input className="text-input" id="po-email" name="supplierEmail" type="email" maxLength={200} /></div>
       <WarehouseSelect warehouses={warehouses} label="Receive into" />
       <div className="field"><label className="field-label" htmlFor="po-lines">Lines, one per line: SKU | Quantity | Unit cost *</label><textarea className="textarea" id="po-lines" name="lines" rows={3} placeholder="AG-1 | 20 | 410.00" required /></div>
       <div className="field"><label className="field-label" htmlFor="po-note">Note</label><input className="text-input" id="po-note" name="note" maxLength={300} /></div>
       <div className="admin-actions"><button className="btn" disabled={pending}>{pending ? 'Creating…' : 'Create order'}</button></div>
+    </form>
+  );
+}
+
+export function SendPurchaseOrderButton({ id, sent }: { id: string; sent: boolean }) {
+  const [state, action, pending] = useActionState(sendPurchaseOrderAction.bind(null, id), empty);
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); startTransition(() => action()); }}>
+      <Messages state={state} />
+      <button className="btn btn-light" disabled={pending}>{sent ? 'Send again' : 'Send to supplier'}</button>
     </form>
   );
 }

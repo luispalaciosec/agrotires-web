@@ -55,6 +55,8 @@ export function useStore() {
   return store;
 }
 
+const saveWishlist = (items: string[]) => fetch('/api/account/wishlist', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items }) }).catch(() => undefined);
+
 export function StoreProvider({ children, products, locale }: { children: ReactNode; products: Product[]; locale: Locale }) {
   const [hydrated, setHydrated] = useState(false);
   const [cart, setCart] = useState<Cart>({});
@@ -62,13 +64,26 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
   const [cartOpen, setCartOpen] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
   const nextToast = useRef(0);
+  const accountList = useRef(false);
   const pathname = usePathname();
   const router = useRouter();
 
   // Read after mount so the server HTML and the first client render match.
   useEffect(() => {
     setCart(getLS('agrotires-demo-cart', {}));
-    setWishlist(getLS('agrotires-demo-wishlist', []));
+    const localList = getLS<string[]>('agrotires-demo-wishlist', []);
+    setWishlist(localList);
+    // A signed-in customer keeps favorites across devices. Only then is there a session cookie to check.
+    if (document.cookie.includes('sb-')) {
+      fetch('/api/account/wishlist').then((r) => r.json()).then((body) => {
+        if (!body?.signedIn) return;
+        accountList.current = true;
+        const merged = [...new Set([...body.items, ...localList])] as string[];
+        setWishlist(merged);
+        setLS('agrotires-demo-wishlist', merged);
+        if (merged.length !== body.items.length) void saveWishlist(merged);
+      }).catch(() => {});
+    }
     setHydrated(true);
     // Only someone who chose Spanish before returns to it, and only from the home page;
     // shared links and search engines always get the language in the URL.
@@ -134,6 +149,7 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
         const next = saved ? wishlist.filter((x) => x !== id) : [...wishlist, id];
         setWishlist(next);
         setLS('agrotires-demo-wishlist', next);
+        if (accountList.current) void saveWishlist(next);
         toast(saved ? t.cart.removed : t.cart.saved);
       },
       toast,

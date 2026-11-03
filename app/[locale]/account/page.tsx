@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AddressForm, AuthForms, B2bForm, BuyAgain } from '@/components/account-forms';
+import { AddressForm, AuthForms, B2bForm, BuyAgain, MachineForm } from '@/components/account-forms';
 import { Icon, PageHead } from '@/components/ui';
 import { money } from '@/lib/catalog';
 import { LOCALE_TAGS, localePath } from '@/lib/i18n';
@@ -10,7 +10,7 @@ import { orderRef, publicSite } from '@/lib/server/email';
 import { returnable, returnLink } from '@/lib/server/operations';
 import { reviewLink } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
-import { deleteAddressAction, signOutAction } from './actions';
+import { deleteAddressAction, deleteMachineAction, signOutAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,10 +57,11 @@ export default async function AccountPage(props: LocaleParams & { searchParams: 
   }
 
   const store = getStore();
-  const [orders, addresses, b2b] = await Promise.all([
+  const [orders, addresses, b2b, machines] = await Promise.all([
     store?.listCustomerOrders(customer.id, customer.emailConfirmed ? customer.email : undefined).catch(() => []) ?? [],
     store?.listAddresses(customer.id).catch(() => []) ?? [],
     store?.getB2bAccount(customer.id).catch(() => undefined),
+    store?.listMachines(customer.id).catch(() => []) ?? [],
   ]);
   const shipments = await Promise.all(orders.map((o) => store?.getShipmentByOrder(o.id).catch(() => undefined)));
   const date = (iso: string) => new Date(iso).toLocaleDateString(LOCALE_TAGS[locale], { dateStyle: 'medium' });
@@ -110,6 +111,21 @@ export default async function AccountPage(props: LocaleParams & { searchParams: 
             </ul>
           ) : <p>{u.noAddresses}</p>}
           <AddressForm />
+        </section>
+
+        <section className="form-card">
+          <h2>{t.extras.machinesTitle}</h2>
+          {machines.length ? (
+            <ul className="account-addresses">
+              {machines.map((m) => (
+                <li key={m.id}>
+                  <span><strong>{m.make} {m.model}</strong>{m.year ? ` · ${m.year}` : ''}<br /><Link className="text-link" href={`${localePath(locale, '/finder')}?tab=machine&make=${encodeURIComponent(m.make)}&model=${encodeURIComponent(m.model)}${m.year ? `&year=${m.year}` : ''}`}>{t.extras.findParts}</Link></span>
+                  <form action={deleteMachineAction.bind(null, locale, m.id)}><button className="text-link" type="submit">{u.remove}</button></form>
+                </li>
+              ))}
+            </ul>
+          ) : <p>{t.extras.noMachines}</p>}
+          <MachineForm />
         </section>
 
         <section className="form-card">

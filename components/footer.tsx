@@ -62,6 +62,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
                 <Link href={href('/help')}>{f.contact}</Link>
                 <a href={`mailto:${BUSINESS.contactEmail}`}>{BUSINESS.contactEmail}</a>
                 <span className="footer-domain">{f.website} {BUSINESS.domain}</span>
+                <address className="footer-domain" style={{ fontStyle: 'normal' }}>{f.warehouse}<br />{BUSINESS.warehouse.lines.join(', ')}</address>
               </div>
             </div>
           </div>

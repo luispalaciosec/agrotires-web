@@ -8,6 +8,7 @@ export default async function CustomersPage() {
   await requireAdmin();
   const customers = customerReport((await getStore()?.listOrders()) ?? []);
   const accounts = await getStore()?.listB2bAccounts().catch(() => undefined);
+  const subscribers = await getStore()?.listSubscribers().catch(() => []) ?? [];
   return (
     <>
       <div className="admin-head">
@@ -28,6 +29,12 @@ export default async function CustomersPage() {
             ))}
           </ul>
         ) : <p className="muted">No applications yet. Customers apply from their account.</p>}
+      </div>
+      <div className="admin-card">
+        <h2>Newsletter</h2>
+        <p style={{ fontSize: 13, margin: '0 0 6px' }}><strong>{subscribers.length}</strong> people signed up. People who opted out are not included.</p>
+        <p className="mini muted">The store collects these sign-ups but sends no campaigns.</p>
+        <a className="btn btn-light" href="/admin/customers/subscribers">Download list (CSV)</a>
       </div>
       <div className="admin-card">
         <h2>Buyers</h2>

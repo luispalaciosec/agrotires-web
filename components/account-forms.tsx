@@ -1,7 +1,7 @@
 'use client';
 
 import { startTransition, useActionState, useState, type FormEvent } from 'react';
-import { applyB2bAction, changePasswordAction, forgotPasswordAction, saveAddressAction, signInAction, signUpAction, type AccountState } from '@/app/[locale]/account/actions';
+import { saveMachineAction, applyB2bAction, changePasswordAction, forgotPasswordAction, saveAddressAction, signInAction, signUpAction, type AccountState } from '@/app/[locale]/account/actions';
 import { US_STATES } from '@/lib/tax';
 import { useStore } from './store';
 import { Icon } from './ui';
@@ -116,6 +116,26 @@ export function AddressForm() {
           <Field id="ad-phone" name="phone" type="tel" label={t.quote.phone} autoComplete="tel" />
         </div>
         <button className="btn" disabled={pending}>{pending ? a.working : a.saveAddress}</button>
+      </form>
+    </details>
+  );
+}
+
+export function MachineForm() {
+  const { t, locale } = useStore();
+  const m = t.extras;
+  const [state, action, pending] = useActionState(saveMachineAction.bind(null, locale), empty);
+  return (
+    <details className="account-add">
+      <summary className="text-link">{m.addMachine}</summary>
+      <form key={state.notice} onSubmit={submitWith(action)}>
+        <Feedback state={state} />
+        <div className="form-grid">
+          <Field id="m-make" name="make" label={m.make} maxLength={80} required />
+          <Field id="m-model" name="model" label={m.model} maxLength={80} required />
+          <Field id="m-year" name="year" label={m.year} inputMode="numeric" maxLength={4} />
+        </div>
+        <button className="btn" disabled={pending}>{pending ? t.auth.working : m.saveMachine}</button>
       </form>
     </details>
   );
