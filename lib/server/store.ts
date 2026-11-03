@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { products as demoProducts, type Product } from '../catalog';
+import { SupabaseStore, supabaseConfigured } from './supabase-store';
 
 // Shapes mirror supabase/migrations/0001_store.sql so the database can replace the local driver.
 export type OrderStatus = 'pending_payment' | 'paid' | 'fulfilled' | 'cancelled' | 'refunded' | 'payment_failed';
@@ -172,6 +173,10 @@ class LocalFileStore implements Store {
 let store: Store | undefined;
 
 export function getStore(): Store | undefined {
+  if (supabaseConfigured()) {
+    store ??= new SupabaseStore();
+    return store;
+  }
   if (process.env.STORE_DRIVER !== 'local') return undefined;
   store ??= new LocalFileStore(process.env.STORE_FILE || path.join(process.cwd(), '.data', 'store.json'));
   return store;

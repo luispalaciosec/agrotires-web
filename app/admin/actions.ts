@@ -23,7 +23,7 @@ export async function loginAction(_: FormState, form: FormData): Promise<FormSta
   if (!adminConfigured()) return { error: 'The admin panel is not configured yet.' };
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
   if (rateLimited(`login:${ip}`, 5, 15 * 60_000)) return { error: 'Too many attempts. Try again in 15 minutes.' };
-  if (!(await logIn(String(form.get('password') || '')))) return { error: 'Incorrect password.' };
+  if (!(await logIn(String(form.get('email') || ''), String(form.get('password') || '')))) return { error: 'Incorrect email or password.' };
   redirect('/admin');
 }
 

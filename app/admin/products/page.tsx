@@ -19,6 +19,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <Link className="btn" href="/admin/products/new">Add product</Link>
         </div>
       </div>
+      {list.length || term ? null : <div className="notice" style={{ marginBottom: 18 }}>No products yet. The store shows its sample catalog until you add the first visible product, which replaces it.</div>}
       <div className="admin-card">
         <form style={{ marginBottom: 16 }}><input className="text-input" name="q" defaultValue={q} placeholder="Search by name, SKU, brand or size" aria-label="Search products" /></form>
         <div className="admin-scroll">

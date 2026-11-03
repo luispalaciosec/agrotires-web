@@ -17,14 +17,20 @@ function Messages({ state }: { state: FormState }) {
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ withEmail }: { withEmail: boolean }) {
   const [state, action, pending] = useActionState(loginAction, empty);
   return (
     <form action={action}>
       <Messages state={state} />
+      {withEmail ? (
+        <div className="field">
+          <label className="field-label" htmlFor="email">Email</label>
+          <input className="text-input" id="email" name="email" type="email" autoComplete="username" required autoFocus />
+        </div>
+      ) : null}
       <div className="field">
         <label className="field-label" htmlFor="password">Password</label>
-        <input className="text-input" id="password" name="password" type="password" autoComplete="current-password" required autoFocus />
+        <input className="text-input" id="password" name="password" type="password" autoComplete="current-password" required autoFocus={!withEmail} />
       </div>
       <button className="btn btn-block" disabled={pending}>Sign in</button>
     </form>

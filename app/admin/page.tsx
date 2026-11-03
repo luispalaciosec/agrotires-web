@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/server/admin-auth';
 import { getStore } from '@/lib/server/store';
+import { supabaseConfigured } from '@/lib/server/supabase-store';
 
 export default async function AdminHome() {
   await requireAdmin();
@@ -19,7 +20,7 @@ export default async function AdminHome() {
       <div className="admin-stats">
         {stats.map(([n, label, href]) => <Link className="admin-stat" href={href} key={label}><strong>{n}</strong><span>{label}</span></Link>)}
       </div>
-      <div className="notice">Testing stage: payments are not live and data is stored in a local file.</div>
+      <div className="notice">Testing stage: payments are not live{supabaseConfigured() ? '.' : ' and data is stored in a local file.'}</div>
     </>
   );
 }
