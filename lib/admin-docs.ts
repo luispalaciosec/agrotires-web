@@ -126,12 +126,12 @@ export const ADMIN_DOCS: AdminDoc[] = [
     es: { title: 'Páginas y bloques', summary: 'Crear páginas nuevas de la tienda sin programar.', sections: [
       ['Cómo crear una', ['Contenido → Páginas → Nueva página.', 'Pon título y dirección. Quedará en /p/tu-direccion.', 'Agrega bloques y revísalos en la vista previa, en EN y ES.', 'Marca Publicada y guarda. Solo un administrador puede guardar o borrar.']],
       ['Bloques', ['Encabezado, texto, imagen, tarjetas, preguntas y llamado a la acción.', 'Tarjetas: Título | Texto, una por renglón. Preguntas: Pregunta | Respuesta, una por renglón.', 'Si falta el español, se muestra el inglés.']],
-      ['Límites', ['La portada y las páginas existentes no se editan aquí.', 'Las imágenes salen de las que ya tiene el sitio.', 'Una página nueva no aparece sola en el menú: hay que enlazarla.', 'Solo acepta texto, nunca HTML.']],
+      ['Límites', ['La portada y las páginas existentes aparecen en la lista como fijas, pero su texto no se edita aquí.', 'Las imágenes salen de las que ya tiene el sitio.', 'Una página nueva no aparece sola en el menú: hay que enlazarla.', 'Solo acepta texto, nunca HTML.']],
     ] },
     en: { title: 'Pages and blocks', summary: 'Create new store pages without coding.', sections: [
       ['How to create one', ['Content → Pages → New page.', 'Add a title and address. It will live at /p/your-address.', 'Add blocks and check them in the preview, in EN and ES.', 'Check Published and save. Only an administrator can save or delete.']],
       ['Blocks', ['Heading, text, image, cards, questions and call to action.', 'Cards: Title | Text, one per line. Questions: Question | Answer, one per line.', 'If Spanish is missing, English is shown.']],
-      ['Limits', ['The home page and existing pages are not edited here.', 'Images come from those already on the site.', 'A new page does not appear in the menu by itself: it must be linked.', 'Text only, never HTML.']],
+      ['Limits', ['The home page and existing pages appear in the list as fixed, but their text is not edited here.', 'Images come from those already on the site.', 'A new page does not appear in the menu by itself: it must be linked.', 'Text only, never HTML.']],
     ] },
   },
   {
