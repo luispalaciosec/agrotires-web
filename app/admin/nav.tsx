@@ -22,6 +22,7 @@ const GROUPS: { title: string; links: { href: string; label: string; icon: strin
     { href: '/admin/taxes', label: 'Taxes', icon: 'shield' },
     { href: '/admin/emails', label: 'Emails', icon: 'mail' },
     { href: '/admin/team', label: 'Team', icon: 'settings' },
+    { href: '/admin/docs', label: 'Docs', icon: 'info' },
   ] },
 ];
 
