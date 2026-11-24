@@ -8,11 +8,13 @@ import { orderRef } from '@/lib/server/email';
 import { paymentsEnabled } from '@/lib/server/paypal';
 import { payLinkProblem } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
+import { closedInCatalog } from '@/lib/server/store-mode';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default async function PayPage(props: LocaleParams & { params: Promise<{ token: string; locale: string }> }) {
+  await closedInCatalog();
   const { locale, t } = await resolveLocale(props);
   const { token } = await props.params;
   const order = await getStore()?.getOrderByPayToken(token).catch(() => undefined);

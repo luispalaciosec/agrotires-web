@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { WishlistItems } from '@/components/account-views';
 import { PageHead } from '@/components/ui';
 import { resolveLocale, type LocaleParams } from '@/lib/locale-params';
+import { closedInCatalog } from '@/lib/server/store-mode';
 
 export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
   const { t } = await resolveLocale(props);
@@ -9,6 +10,7 @@ export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
 }
 
 export default async function WishlistPage(props: LocaleParams) {
+  await closedInCatalog();
   const { locale, t } = await resolveLocale(props);
   return (
     <main id="main-content">

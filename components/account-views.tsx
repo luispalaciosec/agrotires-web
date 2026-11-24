@@ -151,6 +151,16 @@ export function QuoteView() {
   const [sending, setSending] = useState(false);
   const [sentTo, setSentTo] = useState('');
   const [error, setError] = useState('');
+  // A product page links here with ?product=<id>, so the visitor does not have to find it again.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('product');
+    const product = id && products.find((p) => p.id === id);
+    if (!product) return;
+    const select = document.getElementById('quote-product') as HTMLSelectElement | null;
+    const topic = document.getElementById('quote-topic') as HTMLSelectElement | null;
+    if (select) select.value = product.name;
+    if (topic && !topic.value) topic.value = 'Product question';
+  }, [products]);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();

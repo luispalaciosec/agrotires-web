@@ -5,7 +5,7 @@ import { messages } from '@/lib/messages';
 import { NewsletterForm } from './chrome';
 import { Asset, Icon, eyebrowYellow } from './ui';
 
-export function SiteFooter({ locale }: { locale: Locale }) {
+export function SiteFooter({ locale, catalog = false }: { locale: Locale; catalog?: boolean }) {
   const f = messages[locale].footer;
   const href = (p: string) => localePath(locale, p);
   return (
@@ -46,19 +46,21 @@ export function SiteFooter({ locale }: { locale: Locale }) {
               <div className="footer-links">
                 <Link href={href('/help')}>{f.center}</Link>
                 <Link href={href('/quote')}>{f.quote}</Link>
-                <Link href={href('/track')}>{f.track}</Link>
+                {catalog ? null : <Link href={href('/track')}>{f.track}</Link>}
                 <Link href={href('/about')}>{f.aboutLink}</Link>
                 <Link href={href('/guides')}>{f.hub}</Link>
-                <Link href={href('/account')}>{f.account}</Link>
+                {catalog ? null : <Link href={href('/account')}>{f.account}</Link>}
               </div>
             </div>
             <div>
               <h4>{f.information}</h4>
               <div className="footer-links">
-                <Link href={href('/policies/shipping')}>{f.shipping}</Link>
-                <Link href={href('/policies/returns')}>{f.returns}</Link>
+                {catalog ? null : <>
+                  <Link href={href('/policies/shipping')}>{f.shipping}</Link>
+                  <Link href={href('/policies/returns')}>{f.returns}</Link>
+                </>}
                 <Link href={href('/policies/privacy')}>{f.privacy}</Link>
-                <Link href={href('/setup')}>{f.checklist}</Link>
+                {catalog ? null : <Link href={href('/setup')}>{f.checklist}</Link>}
                 <Link href={href('/help')}>{f.contact}</Link>
                 <a href={`mailto:${BUSINESS.contactEmail}`}>{BUSINESS.contactEmail}</a>
                 <span className="footer-domain">{f.website} {BUSINESS.domain}</span>

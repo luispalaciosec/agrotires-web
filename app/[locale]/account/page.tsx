@@ -11,6 +11,7 @@ import { returnable, returnLink } from '@/lib/server/operations';
 import { reviewLink } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
 import { deleteAddressAction, deleteMachineAction, signOutAction } from './actions';
+import { closedInCatalog } from '@/lib/server/store-mode';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
 }
 
 export default async function AccountPage(props: LocaleParams & { searchParams: Promise<{ auth?: string }> }) {
+  await closedInCatalog();
   const { locale, t } = await resolveLocale(props);
   const a = t.account;
   const u = t.auth;

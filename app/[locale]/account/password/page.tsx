@@ -5,6 +5,7 @@ import { PageHead } from '@/components/ui';
 import { localePath } from '@/lib/i18n';
 import { resolveLocale, type LocaleParams } from '@/lib/locale-params';
 import { getCustomer } from '@/lib/server/customer';
+import { closedInCatalog } from '@/lib/server/store-mode';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
 }
 
 export default async function PasswordPage(props: LocaleParams) {
+  await closedInCatalog();
   const { locale, t } = await resolveLocale(props);
   if (!(await getCustomer())) redirect(localePath(locale, '/account'));
   return (

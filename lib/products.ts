@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { DEMO_CATALOG, localizeProduct, products as demoProducts, type Product } from './catalog';
 import type { Locale } from './i18n';
 import { getStore } from './server/store';
+import { isCatalogMode } from './server/store-mode';
 
 // Everything the storefront shows comes from here: only active, priced products, in the page's language.
 // The list is sent to the browser for the cart, which works for a small catalog;
@@ -10,16 +11,19 @@ import { getStore } from './server/store';
 export const getPublicProducts = cache(loadPublicProducts);
 
 // What the browser needs for cards, the cart and search. Product pages read the full data on the server.
-export const browserProducts = (list: Product[]): Product[] => list.map(({ gallery: _, ...p }) => ({ ...p, desc: p.desc.slice(0, 200) }));
+// In catalog mode prices never reach the browser at all.
+export const browserProducts = (list: Product[], catalog = false): Product[] => list.map(({ gallery: _, ...p }) => ({ ...p, desc: p.desc.slice(0, 200), ...(catalog ? { price: 0, volume: undefined } : {}) }));
 
 async function loadPublicProducts(locale: Locale = 'en'): Promise<Product[]> {
   const demo = () => demoProducts.map((p) => localizeProduct(p, locale));
   const store = getStore();
   if (!store) return demo();
   try {
+    // A catalog shows products that have no price yet; a store sells only priced ones.
+    const catalog = await isCatalogMode();
     const [list, fitment, rules] = await Promise.all([store.listProducts(), store.listFitment().catch(() => []), store.listSalesRules().catch(() => [])]);
-    const visible = list.flatMap((p) => (p.active && p.price !== null
-      ? [localizeProduct({ id: p.id, cat: p.cat, name: p.name, nameEs: p.nameEs, sku: p.sku, price: p.price, img: p.img, gallery: p.gallery, volume: rules.find((r) => r.productId === p.id)?.volume.map((v) => ({ minQty: v.minQty, price: v.priceCents / 100 })), fitment: p.compatibilityVerified ? fitment.filter((f) => f.productId === p.id).map(({ make, model, yearFrom, yearTo }) => ({ make, model, yearFrom, yearTo })) : undefined, tags: p.tags, desc: p.desc, descEs: p.descEs, brand: p.brand, tireSize: p.tireSize, equipmentMake: p.equipmentMake, equipmentModel: p.equipmentModel }, locale)]
+    const visible = list.flatMap((p) => (p.active && (catalog || p.price !== null)
+      ? [localizeProduct({ id: p.id, cat: p.cat, name: p.name, nameEs: p.nameEs, sku: p.sku, price: p.price ?? 0, img: p.img, gallery: p.gallery, volume: rules.find((r) => r.productId === p.id)?.volume.map((v) => ({ minQty: v.minQty, price: v.priceCents / 100 })), fitment: p.compatibilityVerified ? fitment.filter((f) => f.productId === p.id).map(({ make, model, yearFrom, yearTo }) => ({ make, model, yearFrom, yearTo })) : undefined, tags: p.tags, desc: p.desc, descEs: p.descEs, brand: p.brand, tireSize: p.tireSize, equipmentMake: p.equipmentMake, equipmentModel: p.equipmentModel }, locale)]
       : []));
     // While testing, an empty database keeps the sample catalog so the store is never blank.
     return visible.length || !DEMO_CATALOG ? visible : demo();

@@ -47,7 +47,7 @@ function LanguageSwitch({ separator }: { separator?: boolean }) {
 
 function SiteHeader() {
   const pathname = usePathname();
-  const { wishlist, count, hydrated, setCartOpen, t, href, locale } = useStore();
+  const { wishlist, count, hydrated, setCartOpen, t, href, locale, catalog } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const navigateSearch = useSearchNav();
   const n = t.nav;
@@ -69,12 +69,11 @@ function SiteHeader() {
           <div className="top-right">
             <span className="tiny-dot" /><Link href={href('/help')}>{t.top.center}</Link><span className="top-divider">|</span>
             <a href={`mailto:${BUSINESS.contactEmail}`} className="top-email">{BUSINESS.contactEmail}</a><span className="top-divider">|</span>
-            <span>{t.top.market}</span><span className="top-divider">|</span>
+            <span>{catalog ? t.catalog.market : t.top.market}</span><span className="top-divider">|</span>
             <LanguageSwitch separator />
           </div>
         </div>
       </div>
-      <div className="demo-ribbon"><strong>{t.ribbon.strong}</strong>{t.ribbon.text}</div>
       <header className="header">
         <div className="container header-inner">
           <Link className="brand" href={href('/')} aria-label={n.homeLabel}>
@@ -94,6 +93,7 @@ function SiteHeader() {
               <Icon name="search" size="sm" />
               <input aria-label={n.search} name="search" placeholder={n.searchPlaceholder} autoComplete="off" />
             </form>
+            {catalog ? <Link className="btn btn-sm desktop-hide" href={href('/quote')}>{t.catalog.quote}</Link> : <>
             <Link className="round-icon desktop-hide" href={href('/account')} title={n.account} aria-label={n.account}><Icon name="user" /></Link>
             <Link className="round-icon desktop-hide" href={href('/wishlist')} title={n.saved} aria-label={n.saved}>
               <Icon name="heart" />{hydrated && wishlist.length ? <span className="count-bubble">{wishlist.length}</span> : null}
@@ -101,6 +101,7 @@ function SiteHeader() {
             <button className="round-icon" type="button" onClick={() => setCartOpen(true)} title={n.cart} aria-label={n.cart}>
               <Icon name="cart" />{hydrated && count ? <span className="count-bubble">{count}</span> : null}
             </button>
+            </>}
             <button className="round-icon mobile-menu-button" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-label={n.openMenu}>
               <Icon name={menuOpen ? 'close' : 'menu'} />
             </button>
@@ -115,9 +116,9 @@ function SiteHeader() {
           {getCategories(locale).map((c) => (
             <Link key={c.id} href={href(c.id === 'machine' ? '/finder?tab=machine' : catHref(c.id))}>{c.name} <Icon name="right" /></Link>
           ))}
-          <Link href={href('/wishlist')}>{n.saved} <Icon name="right" /></Link>
+          {catalog ? <Link href={href('/quote')}>{t.catalog.quote} <Icon name="right" /></Link> : <Link href={href('/wishlist')}>{n.saved} <Icon name="right" /></Link>}
           <Link href={href('/help')}>{n.support} <Icon name="right" /></Link>
-          <Link href={href('/account')}>{n.accountMenu} <Icon name="right" /></Link>
+          {catalog ? null : <Link href={href('/account')}>{n.accountMenu} <Icon name="right" /></Link>}
           <a href={`mailto:${BUSINESS.contactEmail}`}>{n.emailUs} <Icon name="mail" /></a>
         </div>
       </header>
@@ -126,8 +127,18 @@ function SiteHeader() {
 }
 
 function BottomNav() {
-  const { wishlist, count, hydrated, setCartOpen, t, href } = useStore();
+  const { wishlist, count, hydrated, setCartOpen, t, href, catalog } = useStore();
   const n = t.nav;
+  if (catalog) {
+    return (
+      <nav className="mobile-bottom" aria-label={n.quick}>
+        <Link href={href('/')}><Icon name="box" /><span>{n.home}</span></Link>
+        <Link href={href('/shop')}><Icon name="search" /><span>{t.catalog.products}</span></Link>
+        <Link href={href('/quote')}><Icon name="clipboard" /><span>{t.catalog.quoteShort}</span></Link>
+        <Link href={href('/help')}><Icon name="info" /><span>{n.support}</span></Link>
+      </nav>
+    );
+  }
   return (
     <nav className="mobile-bottom" aria-label={n.quick}>
       <Link href={href('/')}><Icon name="box" /><span>{n.home}</span></Link>
@@ -191,13 +202,14 @@ function CartDrawer() {
 }
 
 export function StoreChrome({ footer, children }: { footer: React.ReactNode; children: React.ReactNode }) {
+  const { catalog } = useStore();
   return (
     <>
       <SiteHeader />
       {children}
       {footer}
       <BottomNav />
-      <CartDrawer />
+      {catalog ? null : <CartDrawer />}
     </>
   );
 }

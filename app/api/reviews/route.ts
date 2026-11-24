@@ -1,3 +1,4 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { z } from 'zod';
 import { LOCALES } from '@/lib/i18n';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
@@ -16,6 +17,8 @@ const schema = z.object({
 
 // Only a link signed for a product of a real sold order gets here, and reviews wait for moderation.
 export async function POST(req: Request) {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   if (await rateLimited(`review:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();

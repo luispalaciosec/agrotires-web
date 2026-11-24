@@ -7,6 +7,7 @@ import { JsonLd } from '@/components/ui';
 import { fontClasses } from '@/lib/fonts';
 import { localeStaticParams, resolveLocale, type LocaleParams } from '@/lib/locale-params';
 import { browserProducts, getPublicProducts } from '@/lib/products';
+import { isCatalogMode } from '@/lib/server/store-mode';
 import { baseMetadata, organizationLd, websiteLd } from '@/lib/seo';
 import '../globals.css';
 
@@ -22,15 +23,16 @@ export const viewport: Viewport = { themeColor: '#064b3e', width: 'device-width'
 export default async function StoreLayout({ children, ...props }: LocaleParams & { children: ReactNode }) {
   const { locale, t } = await resolveLocale(props);
   const products = await getPublicProducts(locale);
+  const catalog = await isCatalogMode();
   return (
     <html lang={locale} className={fontClasses} data-scroll-behavior="smooth">
       <body>
         <a className="skip-link" href="#main-content">{locale === 'es' ? 'Saltar al contenido principal' : 'Skip to main content'}</a>
         <JsonLd data={organizationLd} />
         <JsonLd data={websiteLd(locale)} />
-        <StoreProvider products={browserProducts(products)} locale={locale}>
+        <StoreProvider products={browserProducts(products, catalog)} locale={locale} catalog={catalog}>
           <div id="app">
-            <StoreChrome footer={<SiteFooter locale={locale} />}>{children}</StoreChrome>
+            <StoreChrome footer={<SiteFooter locale={locale} catalog={catalog} />}>{children}</StoreChrome>
           </div>
         </StoreProvider>
       </body>

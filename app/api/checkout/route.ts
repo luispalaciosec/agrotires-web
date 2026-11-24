@@ -1,3 +1,4 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { z } from 'zod';
 import { LOCALES } from '@/lib/i18n';
 import { isUsState } from '@/lib/tax';
@@ -20,6 +21,8 @@ const address = z.object({
 const schema = z.object({ email: z.string().trim().email().max(200), address, items: cartSchema, locale: z.enum(LOCALES).optional(), saveAddress: z.boolean().optional() });
 
 export async function POST(req: Request) {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   if (await rateLimited(`checkout:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();

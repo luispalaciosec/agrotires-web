@@ -11,6 +11,7 @@ import { resolveLocale } from '@/lib/locale-params';
 import { getPublicProducts } from '@/lib/products';
 import { ProductViewEvent } from '@/components/product-event';
 import { VolumePrices } from '@/components/sales-views';
+import { isCatalogMode } from '@/lib/server/store-mode';
 import { boughtTogether } from '@/lib/server/sales';
 import { getStore } from '@/lib/server/store';
 import { absolute, breadcrumbLd, languageAlternates } from '@/lib/seo';
@@ -42,6 +43,7 @@ export default async function ProductPage({ params }: Props) {
   if (!p || !c) notFound();
   const m = t.product;
   const href = (path: string) => localePath(locale, path);
+  const catalog = await isCatalogMode();
   const store = getStore();
   const [reviews, orders] = await Promise.all([store?.listApprovedReviews(p.id).catch(() => []) ?? [], store?.listOrders().catch(() => []) ?? []]);
   const together = boughtTogether(orders, p.id).flatMap((tid) => products.filter((x) => x.id === tid));
@@ -62,7 +64,7 @@ export default async function ProductPage({ params }: Props) {
           inLanguage: LOCALE_TAGS[locale],
           image: productImages(p).map((img) => (img.startsWith('https:') ? img : absolute(imageSrc(img)))),
           ...(reviews.length ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: average.toFixed(1), reviewCount: reviews.length } } : {}),
-          offers: { '@type': 'Offer', price: p.price, priceCurrency: 'USD', url: absolute(href(productHref(p.id))) },
+          ...(catalog ? {} : { offers: { '@type': 'Offer', price: p.price, priceCurrency: 'USD', url: absolute(href(productHref(p.id))) } }),
         }} />
       )}
       <div className="container">
@@ -71,20 +73,24 @@ export default async function ProductPage({ params }: Props) {
         </div>
         <div className="detail-layout">
           <div>
-            <ProductGallery key={p.id} images={productImages(p)} alt={m.detailAlt(p.name)} tag={m.demoImage} />
+            <ProductGallery key={p.id} images={productImages(p)} alt={m.detailAlt(p.name)} />
           </div>
           <div className="detail-copy">
             <div className="eyebrow">{c.name}</div>
             <h1>{p.name}</h1>
-            <span className="tag"><Icon name="info" size="xs" /> {m.example}</span>
-            <div className="detail-price">{money(p.price)}</div>
-            <p className="mini muted">{m.priceNote}</p>
+            {catalog ? <p className="mini muted">{t.catalog.pricing}</p> : <>
+              <div className="detail-price">{money(p.price)}</div>
+              <p className="mini muted">{m.priceNote}</p>
+            </>}
             <p className="detail-intro">{p.desc}</p>
-            <div className="notice"><Icon name="info" size="sm" /> {m.notice}</div>
             {reviews.length ? <p className="rating-line" aria-label={t.sales.ratingLabel(average.toFixed(1), reviews.length)}><span className="stars" aria-hidden="true">{'★'.repeat(Math.round(average))}{'☆'.repeat(5 - Math.round(average))}</span> {average.toFixed(1)} · {t.sales.reviewCount(reviews.length)}</p> : null}
-            {p.volume?.length ? <VolumePrices tiers={p.volume} /> : null}
-            <DetailActions id={p.id} />
-            <Link className="text-link" href={href('/quote')} style={{ marginTop: 25 }}>{m.more} <Icon name="arrow" size="sm" /></Link>
+            {catalog ? (
+              <div className="detail-actions"><Link className="btn" href={`${href('/quote')}?product=${encodeURIComponent(p.id)}`}>{t.catalog.ask} <Icon name="arrow" size="sm" /></Link></div>
+            ) : <>
+              {p.volume?.length ? <VolumePrices tiers={p.volume} /> : null}
+              <DetailActions id={p.id} />
+              <Link className="text-link" href={href('/quote')} style={{ marginTop: 25 }}>{m.more} <Icon name="arrow" size="sm" /></Link>
+            </>}
             <div className="detail-assurances">
               <div className="assurance"><Icon name="clipboard" /> {m.assure1}</div>
               <div className="assurance"><Icon name="truck" /> {m.assure2}</div>
@@ -96,7 +102,6 @@ export default async function ProductPage({ params }: Props) {
             <div>
               <h3>{m.details}</h3>
               <p style={{ fontSize: 13, lineHeight: 1.9 }}>{p.desc}</p>
-              <div className="notice">{m.detailsNotice}</div>
             </div>
             <div>
               <h3>{m.glance}</h3>
@@ -106,9 +111,8 @@ export default async function ProductPage({ params }: Props) {
                   <tr><td>{m.department}</td><td>{c.name}</td></tr>
                   {p.brand ? <tr><td>{m.brand}</td><td>{p.brand}</td></tr> : null}
                   {p.tireSize ? <tr><td>{m.tireSize}</td><td>{p.tireSize}</td></tr> : null}
-                  <tr><td>{m.price}</td><td>{money(p.price)} {m.sample}</td></tr>
+                  {catalog ? null : <tr><td>{m.price}</td><td>{money(p.price)} {m.sample}</td></tr>}
                   <tr><td>{m.fitment}</td><td>{p.fitment?.length ? <ul className="fitment-list">{p.fitment.slice(0, 30).map((f) => <li key={fitmentLabel(f)}>{fitmentLabel(f)}</li>)}</ul> : m.notVerified}</td></tr>
-                  <tr><td>{m.availability}</td><td>{m.demoOnly}</td></tr>
                 </tbody>
               </table>
             </div>

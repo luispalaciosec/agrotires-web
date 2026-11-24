@@ -286,6 +286,15 @@ export class SupabaseStore implements Store {
     unwrap(await this.db.from('purchase_orders').update({ sent_at: new Date().toISOString() }).eq('id', id).select('id'));
   }
 
+  async getSetting(key: string) {
+    const row = unwrap<{ value: string } | null>(await this.db.from('store_settings').select('value').eq('key', key).maybeSingle());
+    return row?.value;
+  }
+
+  async setSetting(key: string, value: string) {
+    unwrap(await this.db.from('store_settings').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' }).select('key'));
+  }
+
   async listPages() {
     return unwrap<PageRow[]>(await this.db.from('pages').select().order('created_at', { ascending: false }).limit(500)).map(pageFromRow);
   }
@@ -723,7 +732,8 @@ export class SupabaseStore implements Store {
     const ops = await this.db.from('audit_log').select('id').limit(1);
     const extras = await this.db.from('wishlists').select('product_slug').limit(1);
     const pages = await this.db.from('pages').select('id').limit(1);
+    const settings = await this.db.from('store_settings').select('key').limit(1);
     const limits = await this.db.rpc('hit_rate_limit', { p_key: 'health-check', p_limit: 1000000, p_window_ms: 1000 });
-    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error, migration0011: !ops.error, migration0012: !extras.error, migration0013: !pages.error };
+    return { database: 'connected' as const, categories: categories.count ?? 0, migration0002: !tags.error, migration0003: !stock.error, migration0004: !languages.error, migration0005: !photos.error, migration0006: !refunds.error, migration0007: !limits.error, migration0008: !tools.error, migration0009: !rates.error, migration0010: !sales.error, migration0011: !ops.error, migration0012: !extras.error, migration0013: !pages.error, migration0014: !settings.error };
   }
 }

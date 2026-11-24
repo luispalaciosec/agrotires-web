@@ -27,8 +27,8 @@ export function GET() {
   const body = [
     `# ${BUSINESS.name}`,
     '',
-    '> Instant Solution. Agricultural tires, machinery parts, equipment and farm essentials for the United States, priced in USD. Available in English and Spanish.',
-    '> Instant Solution. Llantas agrícolas, piezas de maquinaria, equipos y esenciales para la granja en Estados Unidos, con precios en USD. Disponible en inglés y español.',
+    '> Instant Solution. Agricultural tires, machinery parts, equipment and farm essentials for the United States. Available in English and Spanish.',
+    '> Instant Solution. Llantas agrícolas, piezas de maquinaria, equipos y esenciales para la granja en Estados Unidos. Disponible en inglés y español.',
     '',
     `Contact / Contacto: ${BUSINESS.contactEmail}`,
     '',

@@ -3,6 +3,7 @@ import { TrackView } from '@/components/track-view';
 import { PageHead } from '@/components/ui';
 import { resolveLocale, type LocaleParams } from '@/lib/locale-params';
 import { languageAlternates } from '@/lib/seo';
+import { closedInCatalog } from '@/lib/server/store-mode';
 
 export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
   const { locale, t } = await resolveLocale(props);
@@ -10,6 +11,7 @@ export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
 }
 
 export default async function TrackPage(props: LocaleParams) {
+  await closedInCatalog();
   const { locale, t } = await resolveLocale(props);
   return (
     <main id="main-content">

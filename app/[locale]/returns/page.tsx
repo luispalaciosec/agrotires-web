@@ -6,11 +6,13 @@ import { orderRef } from '@/lib/server/email';
 import { returnable } from '@/lib/server/operations';
 import { verify } from '@/lib/server/signed';
 import { getStore } from '@/lib/server/store';
+import { closedInCatalog } from '@/lib/server/store-mode';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default async function ReturnsPage(props: LocaleParams & { searchParams: Promise<{ order?: string; sig?: string }> }) {
+  await closedInCatalog();
   const { locale, t } = await resolveLocale(props);
   const { order: orderId = '', sig = '' } = await props.searchParams;
   const r = t.returns;

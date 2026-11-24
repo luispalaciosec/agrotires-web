@@ -11,7 +11,8 @@ export const BUSINESS = Object.freeze({
   warehouse: { lines: ['1350 NW 121 ST AVE', 'Miami, FL 33182'] },
 });
 
-export const DEMO_CATALOG = true;
+// The real catalog is live: sample products and their notices are never shown.
+export const DEMO_CATALOG = false;
 
 export type Category = { id: string; name: string; short: string; desc: string; img: string; tag: string };
 // name and desc are already in the page's language; alt is the name in the other one, for search.

@@ -93,6 +93,22 @@ export async function adminForgotPasswordAction(_: FormState, form: FormData): P
   return { notice: 'If that email has an account, the link is on its way. Check your inbox.' };
 }
 
+export async function setStoreModeAction(_: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  if (!(await isFullAdmin())) return { error: 'Only an administrator can do this.' };
+  const mode = form.get('mode') === 'shop' ? 'shop' : 'catalog';
+  try {
+    await requireStore().setSetting('store_mode', mode);
+  } catch (e) {
+    console.error('Could not save the store mode', e);
+    return { error: 'It could not be saved. Run the migration 0014_store_settings.sql first.' };
+  }
+  await audit('Changed store mode', mode);
+  refreshStorefront();
+  revalidatePath('/admin/store-mode');
+  return { notice: mode === 'shop' ? 'The online store is on.' : 'Catalog mode is on. Nothing can be bought.' };
+}
+
 export async function logoutAction() {
   await logOut();
   redirect('/admin/login');

@@ -1,3 +1,4 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { z } from 'zod';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { requestReturn } from '@/lib/server/operations';
@@ -14,6 +15,8 @@ const schema = z.object({
 
 // The signed link is what proves this is the buyer, with or without an account.
 export async function POST(req: Request) {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   if (await rateLimited(`returns:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();

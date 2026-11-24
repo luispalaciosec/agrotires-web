@@ -117,6 +117,8 @@ export interface Store {
   markPurchaseOrderSent(id: string): Promise<void>;
   addSubscriber(email: string, locale: string): Promise<void>;
   listPages(): Promise<ContentPage[]>;
+  getSetting(key: string): Promise<string | undefined>;
+  setSetting(key: string, value: string): Promise<void>;
   getPage(id: string): Promise<ContentPage | undefined>;
   getPageBySlug(slug: string): Promise<ContentPage | undefined>;
   savePage(id: string | null, page: Omit<ContentPage, 'id' | 'updatedAt'>): Promise<ContentPage>;
@@ -176,7 +178,7 @@ export interface Store {
   addShipmentEvent(shipmentId: string, e: { status: ShipmentStatus; location?: string; note?: string }): Promise<Shipment>;
 }
 
-type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[]; rules: SalesRule[]; b2b: B2bAccount[]; reviews: Review[]; optouts: string[]; reminders: string[]; warehouses: Warehouse[]; levels: StockLevel[]; movements: StockMovement[]; settings: InventorySetting[]; purchases: PurchaseOrder[]; returns: ReturnRequest[]; audit: AuditEntry[]; events: StoreEvent[]; subscribers: Subscriber[]; wishlists: Record<string, string[]>; machines: (SavedMachine & { profileId: string })[]; pages: ContentPage[] };
+type Data = { quotes: Quote[]; orders: Order[]; products: StoredProduct[]; taxRates: TaxRate[]; templates: StoredTemplate[]; shipments: Shipment[]; zones: ShippingZone[]; zipRates: TaxZipRate[]; fitment: ProductFitment[]; addresses: (Address & { profileId: string })[]; welcomed: string[]; rules: SalesRule[]; b2b: B2bAccount[]; reviews: Review[]; optouts: string[]; reminders: string[]; warehouses: Warehouse[]; levels: StockLevel[]; movements: StockMovement[]; settings: InventorySetting[]; purchases: PurchaseOrder[]; returns: ReturnRequest[]; audit: AuditEntry[]; events: StoreEvent[]; subscribers: Subscriber[]; wishlists: Record<string, string[]>; machines: (SavedMachine & { profileId: string })[]; pages: ContentPage[]; options: Record<string, string> };
 
 const seedProducts = (): StoredProduct[] => demoProducts.map((p) => ({ ...p, stockQty: null, active: true, shippingClass: 'parcel', compatibilityVerified: false }));
 
@@ -187,9 +189,9 @@ class LocalFileStore implements Store {
   private async read(): Promise<Data> {
     try {
       const data = JSON.parse(await readFile(this.file, 'utf8'));
-      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], subscribers: [], wishlists: {}, machines: [], pages: [], ...data, products: data.products ?? seedProducts() };
+      return { taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], subscribers: [], wishlists: {}, machines: [], pages: [], options: {}, ...data, products: data.products ?? seedProducts() };
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], subscribers: [], wishlists: {}, machines: [], pages: [] };
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { quotes: [], orders: [], products: seedProducts(), taxRates: [], templates: [], shipments: [], zones: [], zipRates: [], fitment: [], addresses: [], welcomed: [], rules: [], b2b: [], reviews: [], optouts: [], reminders: [], warehouses: [], levels: [], movements: [], settings: [], purchases: [], returns: [], audit: [], events: [], subscribers: [], wishlists: {}, machines: [], pages: [], options: {} };
       throw e;
     }
   }
@@ -372,6 +374,16 @@ class LocalFileStore implements Store {
     return this.write((d) => {
       const po = d.purchases.find((x) => x.id === id);
       if (po) po.sentAt = new Date().toISOString();
+    });
+  }
+
+  async getSetting(key: string) {
+    return (await this.read()).options[key];
+  }
+
+  setSetting(key: string, value: string) {
+    return this.write((d) => {
+      d.options[key] = value;
     });
   }
 

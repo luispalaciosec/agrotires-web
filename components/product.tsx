@@ -7,7 +7,7 @@ import { useStore } from './store';
 import { Asset, Icon } from './ui';
 
 export function ProductCard({ product: p }: { product: Product }) {
-  const { wishlist, hydrated, addToCart, toggleWish, t, href, locale } = useStore();
+  const { wishlist, hydrated, addToCart, toggleWish, t, href, locale, catalog } = useStore();
   const saved = hydrated && wishlist.includes(p.id);
   const m = t.product;
   return (
@@ -16,17 +16,21 @@ export function ProductCard({ product: p }: { product: Product }) {
         <Link href={href(productHref(p.id))} style={{ width: '100%', height: '100%', display: 'block' }} aria-label={`${m.viewPrefix}${p.name}`}>
           <Asset name={p.img} alt={m.imageAlt(p.name)} sizes="(max-width: 720px) 50vw, 300px" />
         </Link>
-        <span className="sample-tag">{m.demo}</span>
-        <button type="button" className={`product-wish ${saved ? 'is-saved' : ''}`} onClick={() => toggleWish(p.id)} aria-label={saved ? m.removeWish : m.saveWish} title={m.saveTitle}><Icon name="heart" size="sm" /></button>
+        {catalog ? null : <button type="button" className={`product-wish ${saved ? 'is-saved' : ''}`} onClick={() => toggleWish(p.id)} aria-label={saved ? m.removeWish : m.saveWish} title={m.saveTitle}><Icon name="heart" size="sm" /></button>}
       </div>
       <div className="product-info">
         <span className="product-cat">{getCategory(p.cat, locale)?.name || m.fallbackCat}</span>
         <Link href={href(productHref(p.id))} className="product-name">{p.name}</Link>
         <span className="product-sku">{p.sku}</span>
-        <div className="product-bottom">
-          <span className="product-price">{money(p.price)}<small>{m.illustrative}</small></span>
+        {catalog ? (
+          <div className="product-bottom">
+            {/* The name above is the link people tab to; this one repeats it for the eye. */}
+            <Link className="text-link" href={href(productHref(p.id))} tabIndex={-1} aria-hidden="true">{t.catalog.details} <Icon name="arrow" size="sm" /></Link>
+          </div>
+        ) : <div className="product-bottom">
+          <span className="product-price">{money(p.price)}</span>
           <button type="button" className="add-button" onClick={() => addToCart(p.id)} aria-label={m.addAria(p.name)}><Icon name="plus" /></button>
-        </div>
+        </div>}
       </div>
     </article>
   );

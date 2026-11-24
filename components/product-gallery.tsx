@@ -5,13 +5,13 @@ import { useStore } from './store';
 import { Asset } from './ui';
 
 // With one image this renders exactly the mockup's detail image; thumbnails appear only with more.
-export function ProductGallery({ images, alt, tag }: { images: string[]; alt: string; tag: string }) {
+export function ProductGallery({ images, alt, tag }: { images: string[]; alt: string; tag?: string }) {
   const { t } = useStore();
   const [current, setCurrent] = useState(0);
   return (
     <>
       <div className="detail-image photo-detail">
-        <span className="sample-tag">{tag}</span>
+        {tag ? <span className="sample-tag">{tag}</span> : null}
         <Asset key={images[current]} name={images[current]} alt={alt} sizes="(max-width: 720px) 100vw, 640px" preload />
       </div>
       {images.length > 1 ? (

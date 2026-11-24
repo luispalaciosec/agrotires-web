@@ -32,7 +32,6 @@ export default async function AboutPage(props: LocaleParams) {
             <div className="simple-card"><Icon name="bolt" size="lg" /><h3>{a.c2}</h3><p>{a.c2b}</p></div>
             <div className="simple-card"><Icon name="shield" size="lg" /><h3>{a.c3}</h3><p>{a.c3b}</p></div>
           </div>
-          <p style={{ margin: '26px 0 0', fontSize: 12 }}>{a.note}</p>
         </div>
       </section>
     </main>

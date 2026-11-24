@@ -1,3 +1,4 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { z } from 'zod';
 import { isUsState } from '@/lib/tax';
 import { quoteOrder } from '@/lib/server/checkout';
@@ -10,6 +11,8 @@ const schema = z.object({ items: cartSchema, state: z.string().refine(isUsState)
 
 // What the customer would pay for this cart and destination, before creating anything.
 export async function POST(req: Request) {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   if (await rateLimited(`quote-total:${clientIp(req)}`, 60)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();

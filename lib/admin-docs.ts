@@ -169,6 +169,20 @@ export const ADMIN_DOCS: AdminDoc[] = [
     ] },
   },
   {
+    slug: 'modo-catalogo',
+    group: 'setup',
+    es: { title: 'Modo catálogo', summary: 'Mostrar los productos sin vender, o abrir la tienda en línea.', sections: [
+      ['Qué muestra', ['Productos, categorías, guías, búsqueda, páginas y el formulario de cotización.', 'Cada producto lleva a Pedir información o cotización en lugar de comprar.']],
+      ['Qué oculta', ['Precios, carrito, pago, cuentas de cliente, favoritos, seguimiento de pedidos, devoluciones, reseñas y las políticas de envío y devoluciones.', 'Esas páginas y sus servicios responden como inexistentes, así que nadie puede comprar ni con un enlace directo.']],
+      ['Cómo cambiarlo', ['Ajustes → Modo de la tienda. Solo un administrador puede cambiarlo.', 'Si el ajuste no se puede leer, el sitio queda en modo catálogo.', 'Activa la tienda en línea solo cuando PayPal, envíos, impuestos y el catálogo real estén listos.']],
+    ] },
+    en: { title: 'Catalog mode', summary: 'Show products without selling, or open the online store.', sections: [
+      ['What it shows', ['Products, categories, guides, search, pages and the quote form.', 'Each product leads to Request information or a quote instead of buying.']],
+      ['What it hides', ['Prices, cart, checkout, customer accounts, favorites, order tracking, returns, reviews and the shipping and returns policies.', 'Those pages and their services answer as if they did not exist, so nobody can buy even with a direct link.']],
+      ['How to change it', ['Setup → Store mode. Only an administrator can change it.', 'If the setting cannot be read, the site stays in catalog mode.', 'Turn on the online store only when PayPal, shipping, taxes and the real catalog are ready.']],
+    ] },
+  },
+  {
     slug: 'envio-impuestos',
     group: 'setup',
     es: { title: 'Tarifas de envío e impuestos', summary: 'Lo que se suma en el pago, según el destino.', sections: [
@@ -210,12 +224,12 @@ export const ADMIN_DOCS: AdminDoc[] = [
     es: { title: 'Arquitectura', summary: 'Con qué está hecha la tienda.', sections: [
       ['Componentes', ['Aplicación: Next.js, en Vercel.', 'Base de datos, cuentas y fotos: Supabase.', 'Pagos: PayPal.', 'Correo: buzón de Google Workspace por SMTP.', 'Código: repositorio luispalaciosec/agrotires-web. Publicar en main despliega en Vercel.']],
       ['Tareas automáticas', ['Una revisión diaria (/api/cron/reminders, 15:00 UTC) detecta stock bajo y envía recordatorios si están activos.']],
-      ['Migraciones', ['Están en supabase/migrations, de 0001 a 0013, y se corren en orden en Supabase.', '/api/health indica cuáles están aplicadas y si el correo y los pagos están encendidos.']],
+      ['Migraciones', ['Están en supabase/migrations, de 0001 a 0014, y se corren en orden en Supabase.', '/api/health indica cuáles están aplicadas y si el correo y los pagos están encendidos.']],
     ] },
     en: { title: 'Architecture', summary: 'What the store is built with.', sections: [
       ['Components', ['Application: Next.js, on Vercel.', 'Database, accounts and photos: Supabase.', 'Payments: PayPal.', 'Email: Google Workspace mailbox over SMTP.', 'Code: repository luispalaciosec/agrotires-web. Pushing to main deploys to Vercel.']],
       ['Automatic jobs', ['A daily check (/api/cron/reminders, 15:00 UTC) detects low stock and sends reminders if turned on.']],
-      ['Migrations', ['They live in supabase/migrations, 0001 to 0013, and run in order in Supabase.', '/api/health shows which are applied and whether email and payments are on.']],
+      ['Migrations', ['They live in supabase/migrations, 0001 to 0014, and run in order in Supabase.', '/api/health shows which are applied and whether email and payments are on.']],
     ] },
   },
   {

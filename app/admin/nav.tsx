@@ -18,6 +18,7 @@ const GROUPS: { title: string; links: { href: string; label: string; icon: strin
   { title: 'Content', links: [{ href: '/admin/pages', label: 'Pages', icon: 'guide' }] },
   { title: 'Insight', links: [{ href: '/admin/analytics', label: 'Analytics', icon: 'bolt' }, { href: '/admin/accounting', label: 'Accounting', icon: 'guide' }, { href: '/admin/activity', label: 'Activity', icon: 'clock' }] },
   { title: 'Setup', links: [
+    { href: '/admin/store-mode', label: 'Store mode', icon: 'lock' },
     { href: '/admin/shipping', label: 'Shipping rates', icon: 'compass' },
     { href: '/admin/taxes', label: 'Taxes', icon: 'shield' },
     { href: '/admin/emails', label: 'Emails', icon: 'mail' },

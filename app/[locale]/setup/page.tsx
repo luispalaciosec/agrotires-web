@@ -8,6 +8,7 @@ import { accountsEnabled } from '@/lib/server/customer';
 import { emailEnabled } from '@/lib/server/email';
 import { paymentsEnabled } from '@/lib/server/paypal';
 import { getStore } from '@/lib/server/store';
+import { closedInCatalog } from '@/lib/server/store-mode';
 
 // Reads the store's real state on each visit, so nothing here can go stale.
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,7 @@ export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
 }
 
 export default async function SetupPage(props: LocaleParams) {
+  await closedInCatalog();
   const { locale, t } = await resolveLocale(props);
   const s = t.setup;
   const store = getStore();

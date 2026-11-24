@@ -29,7 +29,7 @@ export function ShopFromUrl() {
 // sort and refinement filters exactly like the prototype.
 function ShopView({ category, search }: { category: string; search: string }) {
   const router = useRouter();
-  const { products, t, href, locale } = useStore();
+  const { products, t, href, locale, catalog } = useStore();
   const [sort, setSort] = useState('featured');
   const [machine, setMachine] = useState('');
   const [max, setMax] = useState('all');
@@ -79,20 +79,19 @@ function ShopView({ category, search }: { category: string; search: string }) {
               ))}
             </div>
             <div className="filter-block">
-              <h4>{s.equipmentType} <small style={{ color: 'var(--muted)', fontWeight: 500 }}>{s.demoTags}</small></h4>
+              <h4>{s.equipmentType}</h4>
               <label className="filter-check"><input type="radio" name="filter-machine" checked={!machine} onChange={() => setMachine('')} /> {s.allEquipment}</label>
               {MACHINES.map((m) => (
                 <label className="filter-check" key={m}><input type="radio" name="filter-machine" checked={machine === m} onChange={() => setMachine(m)} /> {s.machines[m]}</label>
               ))}
             </div>
-            <div className="filter-block">
+            {catalog ? null : <div className="filter-block">
               <h4>{s.priceTitle}</h4>
               <label className="filter-check"><input type="radio" name="filter-max" checked={max === 'all'} onChange={() => setMax('all')} /> {s.anyPrice}</label>
               {[100, 300, 700].map((n) => (
                 <label className="filter-check" key={n}><input type="radio" name="filter-max" checked={max === String(n)} onChange={() => setMax(String(n))} /> {s.under(money(n))}</label>
               ))}
-            </div>
-            <div className="notice"><Icon name="info" size="sm" /> {s.notice}</div>
+            </div>}
           </aside>
           <div className="shop-main">
             <div className="shop-toolbar">
@@ -102,8 +101,10 @@ function ShopView({ category, search }: { category: string; search: string }) {
               </div>
               <select className="select-input" style={{ height: 41 }} id="sort-products" aria-label={s.sortLabel} value={sort} onChange={(e) => setSort(e.target.value)}>
                 <option value="featured">{s.featured}</option>
-                <option value="priceasc">{s.priceAsc}</option>
-                <option value="pricedesc">{s.priceDesc}</option>
+                {catalog ? null : <>
+                  <option value="priceasc">{s.priceAsc}</option>
+                  <option value="pricedesc">{s.priceDesc}</option>
+                </>}
                 <option value="az">{s.az}</option>
               </select>
             </div>

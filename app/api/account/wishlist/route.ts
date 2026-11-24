@@ -1,3 +1,4 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { z } from 'zod';
 import { getCustomer } from '@/lib/server/customer';
 import { json, readJson, sameOrigin } from '@/lib/server/http';
@@ -7,6 +8,8 @@ const schema = z.object({ items: z.array(z.string().min(1).max(100)).max(200) })
 
 // The account comes from the session, so nobody can read or change another person's list.
 export async function GET() {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   const customer = await getCustomer();
   if (!customer) return json({ signedIn: false });
   const items = await getStore()?.getWishlist(customer.id).catch(() => undefined);
@@ -14,6 +17,8 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   const customer = await getCustomer();
   if (!customer) return json({ error: 'Sign in first' }, 401);

@@ -9,7 +9,7 @@ import { POST as quotes } from '@/app/api/quotes/route';
 import { settleCapture } from '@/lib/server/orders';
 import { paymentsEnabled } from '@/lib/server/paypal';
 import { priceCart, valueToCents } from '@/lib/server/pricing';
-import { products as demoProducts } from '@/lib/catalog';
+import { DEMO_CATALOG, products as demoProducts } from '@/lib/catalog';
 import { getStore, type StoredProduct } from '@/lib/server/store';
 
 const file = path.join(mkdtempSync(path.join(tmpdir(), 'agrotires-')), 'store.json');
@@ -70,7 +70,8 @@ describe('pricing', () => {
 
 describe('payments switch', () => {
   it('is off by default', () => expect(paymentsEnabled()).toBe(false));
-  it('never allows live payments on the demo catalog', () => {
+  // Guards the sample catalog, if it is ever switched back on.
+  it.skipIf(!DEMO_CATALOG)('never allows live payments on the demo catalog', () => {
     enablePayments();
     expect(paymentsEnabled()).toBe(true);
     process.env.PAYPAL_ENV = 'live';

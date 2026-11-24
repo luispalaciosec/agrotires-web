@@ -1,3 +1,4 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { z } from 'zod';
 import { clientIp, json, rateLimited, readJson, sameOrigin } from '@/lib/server/http';
 import { settleCapture } from '@/lib/server/orders';
@@ -7,6 +8,8 @@ import { getStore } from '@/lib/server/store';
 const schema = z.object({ paypalOrderId: z.string().regex(/^[A-Za-z0-9-]{1,64}$/) });
 
 export async function POST(req: Request) {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   if (await rateLimited(`capture:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();

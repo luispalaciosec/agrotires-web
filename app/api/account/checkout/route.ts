@@ -1,9 +1,12 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { getCustomer } from '@/lib/server/customer';
 import { json } from '@/lib/server/http';
 import { getStore } from '@/lib/server/store';
 
 // Prefills the checkout for a signed-in customer. Only their own data, and never cached.
 export async function GET() {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   const customer = await getCustomer();
   if (!customer) return json({ signedIn: false });
   const addresses = await getStore()?.listAddresses(customer.id).catch(() => []);

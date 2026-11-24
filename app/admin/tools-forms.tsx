@@ -6,7 +6,7 @@ import { defaultContent, fillTemplate, templateProblem, type EmailLocale, type T
 import { CARRIERS, SHIPMENT_STAGES, SHIPMENT_STATUSES, STATUS_LABELS, type ShipmentStatus } from '@/lib/shipping';
 import { bpsToPercent, US_STATES } from '@/lib/tax';
 import type { Shipment, TaxRate } from '@/lib/server/store';
-import { createPayLinkAction, saveB2bDecisionAction, addShippingZoneAction, importZipRatesAction, addShipmentEventAction, createShipmentAction, resetEmailTemplateAction, saveEmailTemplateAction, saveTaxRatesAction, sendTestEmailAction, type FormState } from './actions';
+import { setStoreModeAction, createPayLinkAction, saveB2bDecisionAction, addShippingZoneAction, importZipRatesAction, addShipmentEventAction, createShipmentAction, resetEmailTemplateAction, saveEmailTemplateAction, saveTaxRatesAction, sendTestEmailAction, type FormState } from './actions';
 import { Messages } from './forms';
 
 const empty: FormState = {};
@@ -270,6 +270,23 @@ export function ShipmentUpdateForm({ orderId, shipment }: { orderId: string; shi
       </div>
       {emails ? <label className="admin-check"><input type="checkbox" name="notify" defaultChecked /> Email the customer about this update</label> : null}
       <div className="admin-actions" style={{ marginTop: 12 }}><button className="btn" disabled={pending}>{pending ? 'Saving…' : 'Add update'}</button></div>
+    </form>
+  );
+}
+
+export function StoreModeForm({ catalog }: { catalog: boolean }) {
+  const [state, action, pending] = useActionState(setStoreModeAction, {});
+  return (
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      const data = new FormData(e.currentTarget);
+      if (data.get('mode') === 'shop' && !confirm(panelText('Turn on the online store? Customers will see prices and be able to pay.'))) return;
+      startTransition(() => action(data));
+    }}>
+      <Messages state={state} />
+      <label className="admin-check"><input type="radio" name="mode" value="catalog" defaultChecked={catalog} /> Catalog: information only</label>
+      <label className="admin-check"><input type="radio" name="mode" value="shop" defaultChecked={!catalog} /> Online store: prices, cart and payments</label>
+      <div className="admin-actions"><button className="btn" disabled={pending}>{pending ? 'Saving…' : 'Save'}</button></div>
     </form>
   );
 }

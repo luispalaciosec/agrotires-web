@@ -29,6 +29,7 @@ export const saveLanguage = (locale: Locale) => setLS(LANGUAGE_KEY, locale);
 
 type Store = {
   locale: Locale;
+  catalog: boolean;
   t: (typeof messages)['en'];
   href: (path: string) => string;
   hydrated: boolean;
@@ -57,7 +58,7 @@ export function useStore() {
 
 const saveWishlist = (items: string[]) => fetch('/api/account/wishlist', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items }) }).catch(() => undefined);
 
-export function StoreProvider({ children, products, locale }: { children: ReactNode; products: Product[]; locale: Locale }) {
+export function StoreProvider({ children, products, locale, catalog = false }: { children: ReactNode; products: Product[]; locale: Locale; catalog?: boolean }) {
   const [hydrated, setHydrated] = useState(false);
   const [cart, setCart] = useState<Cart>({});
   const [wishlist, setWishlist] = useState<string[]>([]);
@@ -113,6 +114,7 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
     const t = messages[locale];
     return {
       locale,
+      catalog,
       t,
       href: (path) => localePath(locale, path),
       hydrated,
@@ -154,7 +156,7 @@ export function StoreProvider({ children, products, locale }: { children: ReactN
       },
       toast,
     };
-  }, [locale, hydrated, products, cart, wishlist, cartOpen, toast]);
+  }, [locale, catalog, hydrated, products, cart, wishlist, cartOpen, toast]);
 
   return (
     <StoreContext.Provider value={value}>

@@ -1,3 +1,4 @@
+import { catalogClosed } from '@/lib/server/store-mode';
 import { z } from 'zod';
 import { LOCALES } from '@/lib/i18n';
 import { isUsState } from '@/lib/tax';
@@ -17,6 +18,8 @@ const schema = z.object({
 
 // Net terms are only for accounts the business approved, decided here from the session.
 export async function POST(req: Request) {
+  const closed = await catalogClosed();
+  if (closed) return closed;
   if (!sameOrigin(req)) return json({ error: 'Forbidden' }, 403);
   if (await rateLimited(`terms:${clientIp(req)}`, 10)) return json({ error: 'Too many requests' }, 429);
   const store = getStore();

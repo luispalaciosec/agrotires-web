@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { Icon, PageHead } from '@/components/ui';
 import { localePath } from '@/lib/i18n';
 import { resolveLocale } from '@/lib/locale-params';
 import { languageAlternates } from '@/lib/seo';
+import { isCatalogMode } from '@/lib/server/store-mode';
 
 type Props = { params: Promise<{ locale: string; type: string }> };
 
@@ -17,6 +19,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function PolicyPage({ params }: Props) {
+  // Shipping, returns and terms belong to selling; privacy applies to any website.
+  if ((await params).type !== 'privacy' && (await isCatalogMode())) notFound();
   const { locale, t } = await resolveLocale({ params });
   const { type } = await params;
   const p = t.policies;
@@ -28,7 +32,6 @@ export default async function PolicyPage({ params }: Props) {
         <div className="notice"><Icon name="info" size="sm" /> {p.draft}</div>
         <h2>{p.before}</h2>
         <p>{txt}</p>
-        <p>{p.demo}</p>
         <Link className="btn" href={localePath(locale, '/setup')}>{p.btn} <Icon name="arrow" size="sm" /></Link>
       </div>
     </main>

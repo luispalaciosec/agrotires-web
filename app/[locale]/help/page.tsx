@@ -5,6 +5,7 @@ import { BUSINESS, getFaqs } from '@/lib/catalog';
 import { LOCALE_TAGS, localePath } from '@/lib/i18n';
 import { resolveLocale, type LocaleParams } from '@/lib/locale-params';
 import { languageAlternates } from '@/lib/seo';
+import { isCatalogMode } from '@/lib/server/store-mode';
 
 export async function generateMetadata(props: LocaleParams): Promise<Metadata> {
   const { locale, t } = await resolveLocale(props);
@@ -15,10 +16,11 @@ export default async function HelpPage(props: LocaleParams) {
   const { locale, t } = await resolveLocale(props);
   const h = t.help;
   const faqs = getFaqs(locale);
+  const catalog = await isCatalogMode();
   const tiles = [
     { href: '/quote', icon: 'clipboard', title: h.t1, body: h.t1b, cta: h.t1c },
     { href: '/finder', icon: 'search', title: h.t2, body: h.t2b, cta: h.t2c },
-    { href: '/policies/shipping', icon: 'truck', title: h.t3, body: h.t3b, cta: h.t3c },
+    ...(catalog ? [] : [{ href: '/policies/shipping', icon: 'truck', title: h.t3, body: h.t3b, cta: h.t3c }]),
     { href: '/guides', icon: 'guide', title: h.t4, body: h.t4b, cta: h.t4c },
   ];
   return (
